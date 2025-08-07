@@ -13,7 +13,8 @@ SECRET_KEY = "django-insecure-%9b_e2pl+ah^rm7ljs4u9hudg$$rh^(qd7q(3z+&a^3u*ohm!g
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['https://workflow-z7zt.onrender.com']
+ALLOWED_HOSTS = ['workflow-z7zt.onrender.com', 'localhost', '127.0.0.1']
+
 
 
 # Application definition
