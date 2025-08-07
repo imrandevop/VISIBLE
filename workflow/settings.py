@@ -1,5 +1,5 @@
 from pathlib import Path
-import os
+import os, dj_database_url
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -13,7 +13,7 @@ SECRET_KEY = "django-insecure-%9b_e2pl+ah^rm7ljs4u9hudg$$rh^(qd7q(3z+&a^3u*ohm!g
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['https://workflow-z7zt.onrender.com']
 
 
 # Application definition
@@ -64,10 +64,9 @@ WSGI_APPLICATION = "workflow.wsgi.application"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
+    'default': dj_database_url.config(
+        default=os.getenv('DATABASE_URL')
+    )
 }
 
 
