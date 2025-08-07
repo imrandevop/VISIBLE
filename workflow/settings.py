@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "apps.seeker_auth",
     "apps.worker_auth",
+    "apps.authentication",
 
 ]
 
@@ -65,11 +66,20 @@ WSGI_APPLICATION = "workflow.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': dj_database_url.config(
-        default=os.getenv('DATABASE_URL')
-    )
-}
+DATABASE_URL = os.getenv('DATABASE_URL')
+
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.config(default=DATABASE_URL, conn_max_age=600)
+    }
+else:
+    # Fallback to SQLite for local development
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / "db.sqlite3",
+        }
+    }
 
 
 # Password validation
@@ -113,3 +123,23 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',
+    ]
+}
+
+# <----------------- authentication OTP section ----------------->
+AUTH_USER_MODEL = 'authentication.User'
+
+# MSG91 Configuration
+MSG91_AUTHKEY = '463609AmWKwzCV6894b2b4P1'
+MSG91_SENDER_ID = 'OTPSMS'
+MSG91_ROUTE = 4  # Transactional route
+MSG91_COUNTRY = 91  # India
+
+# OTP Settings
+OTP_LENGTH = 6
+OTP_VALIDITY_MINUTES = 10
