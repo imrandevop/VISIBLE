@@ -9,9 +9,26 @@ class User(AbstractUser):
     is_mobile_verified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     
+    # Add these to fix the conflict
+    groups = models.ManyToManyField(
+        'auth.Group',
+        verbose_name='groups',
+        blank=True,
+        related_name='custom_user_set',
+        related_query_name='custom_user',
+    )
+    user_permissions = models.ManyToManyField(
+        'auth.Permission',
+        verbose_name='user permissions',
+        blank=True,
+        related_name='custom_user_set',
+        related_query_name='custom_user',
+    )
+    
     def __str__(self):
         return f"{self.mobile_number}"
 
+# Keep your OTP model as is (you might use it later)
 class OTP(models.Model):
     mobile_number = models.CharField(max_length=15)
     otp_code = models.CharField(max_length=6)

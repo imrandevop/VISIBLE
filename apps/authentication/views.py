@@ -1,159 +1,226 @@
-from rest_framework.decorators import api_view
+# apps/authentication/views.py
+
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+from django.utils.decorators import method_decorator
+from django.views import View
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework import status
-from django.utils import timezone
-from .models import User, OTP
-from .services import MSG91Service
-import re
 
-def validate_mobile_number(mobile):
-    """Validate Indian mobile number"""
-    pattern = r'^[6-9]\d{9}$'
-    return re.match(pattern, mobile) is not None
+# Import your OTP service and JWT utils
+from apps.authentication.services.otp_service import MSG91OTPService
+from apps.authentication.utils.jwt_utils import create_jwt_response
 
-@api_view(['GET'])
-def test_api(request):
-    """Test if API is working"""
-    return Response({
-        'success': True,
-        'message': 'Authentication API is working!',
-        'timestamp': timezone.now()
-    })
+# Initialize OTP service
+otp_service = MSG91OTPService()
 
 @api_view(['POST'])
-def send_otp(request):
-    """Send OTP to mobile number"""
-    mobile_number = request.data.get('mobile_number')
+@permission_classes([AllowAny])
+def send_otp_api(request, version=None):
+    """
+    API endpoint to send OTP to mobile number
+    This same endpoint works for both initial send and resend
     
-    if not mobile_number:
-        return Response({
-            'success': False,
-            'message': 'Mobile number is required'
-        }, status=status.HTTP_400_BAD_REQUEST)
+    POST /api/v1/send-otp/
+    Body: {"mobile_number": "9876543210"}
     
-    # Clean mobile number - remove spaces, dashes, etc.
-    mobile_number = re.sub(r'[^\d]', '', mobile_number)
-    
-    # Remove country code if provided (91 for India)
-    if mobile_number.startswith('91') and len(mobile_number) == 12:
-        mobile_number = mobile_number[2:]
-    
-    # Validate mobile number format
-    if not validate_mobile_number(mobile_number):
-        return Response({
-            'success': False,
-            'message': 'Invalid mobile number. Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9'
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
+    Response: {
+        "status": "success"/"error",
+        "message": "OTP sent successfully to your mobile number",
+        "mobile": "9876543210"
+    }
+    """
     try:
-        # Generate OTP
-        otp_code = OTP.generate_otp()
+        mobile_number = request.data.get('mobile_number')
         
-        # Save OTP to database
-        otp_obj = OTP.objects.create(
-            mobile_number=mobile_number,
-            otp_code=otp_code
-        )
+        # You can handle different versions here
+        if hasattr(request, 'version'):
+            api_version = request.version
+            # Example: Different logic for different versions
+            if api_version == 'v2':
+                # Future v2 logic can go here
+                pass
         
-        print(f"Generated OTP: {otp_code} for mobile: {mobile_number}")  # Debug log
-        
-        # Send SMS using MSG91
-        sms_service = MSG91Service()
-        result = sms_service.send_otp_sms(mobile_number, otp_code)
-        
-        if result['success']:
+        # Validate input
+        if not mobile_number:
             return Response({
-                'success': True,
-                'message': 'OTP sent successfully to your mobile number',
-                'mobile_number': mobile_number,
-                'otp_id': otp_obj.id,  # Can be used for reference
-                'debug_otp': otp_code  # Remove this in production!
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({
-                'success': False,
-                'message': result['message'],
-                'error_details': result.get('error'),
-                'debug_otp': otp_code  # For testing even if SMS fails
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                "status": "error",
+                "message": "Mobile number is required"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Send OTP (works for both send and resend)
+        result = otp_service.send_otp_sms(mobile_number)
+        
+        # Return appropriate status code
+        status_code = status.HTTP_200_OK if result["status"] == "success" else status.HTTP_400_BAD_REQUEST
+        return Response(result, status=status_code)
         
     except Exception as e:
         return Response({
-            'success': False,
-            'message': 'Server error occurred while sending OTP',
-            'error': str(e)
+            "status": "error",
+            "message": "An unexpected server error occurred. Please try again."
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
-def verify_otp(request):
-    """Verify OTP entered by user"""
-    mobile_number = request.data.get('mobile_number')
-    otp_code = request.data.get('otp')
+@permission_classes([AllowAny])
+def verify_otp_api(request, version=None):
+    """
+    API endpoint to verify OTP and create user with JWT token
     
-    if not mobile_number or not otp_code:
-        return Response({
-            'success': False,
-            'message': 'Both mobile number and OTP are required'
-        }, status=status.HTTP_400_BAD_REQUEST)
+    POST /api/v1/verify-otp/
+    Body: {"mobile_number": "9876543210", "otp": "123456"}
     
-    # Clean mobile number
-    mobile_number = re.sub(r'[^\d]', '', mobile_number)
-    if mobile_number.startswith('91') and len(mobile_number) == 12:
-        mobile_number = mobile_number[2:]
-    
+    Response: {
+        "status": "success"/"error",
+        "message": "OTP verified and user created successfully",
+        "access_token": "eyJ0eXAiOiJKV1QiLCJhbGci...",
+        "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGci...",
+        "mobile": "9876543210",
+        "is_new_user": true
+    }
+    """
     try:
-        # Find the most recent valid OTP for this mobile number
-        otp_obj = OTP.objects.filter(
-            mobile_number=mobile_number,
-            otp_code=otp_code,
-            is_verified=False
-        ).latest('created_at')
+        mobile_number = request.data.get('mobile_number')
+        otp = request.data.get('otp')
         
-        # Check if OTP is still valid (not expired)
-        if not otp_obj.is_valid():
+        # Handle versioning
+        if hasattr(request, 'version'):
+            api_version = request.version
+            # Example: v2 might return different response format
+            if api_version == 'v2':
+                # Future v2 logic can go here
+                pass
+        
+        # Validate inputs
+        if not mobile_number:
             return Response({
-                'success': False,
-                'message': 'OTP has expired. Please request a new OTP.',
-                'expired': True
+                "status": "error",
+                "message": "Mobile number is required"
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Mark OTP as verified
-        otp_obj.is_verified = True
-        otp_obj.save()
+        if not otp:
+            return Response({
+                "status": "error",
+                "message": "OTP is required"
+            }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Create or get user
-        user, created = User.objects.get_or_create(
-            mobile_number=mobile_number,
-            defaults={
-                'username': mobile_number,  # Using mobile as username
-                'is_mobile_verified': True
-            }
-        )
+        # Verify OTP
+        result = otp_service.verify_otp(mobile_number, otp)
         
-        # If user exists but wasn't verified, mark as verified
-        if not created and not user.is_mobile_verified:
-            user.is_mobile_verified = True
-            user.save()
-        
-        return Response({
-            'success': True,
-            'message': 'OTP verified successfully!',
-            'user_id': user.id,
-            'mobile_number': user.mobile_number,
-            'is_new_user': created,
-            'next_step': 'user_type_selection'  # Frontend knows what to show next
-        }, status=status.HTTP_200_OK)
-        
-    except OTP.DoesNotExist:
-        return Response({
-            'success': False,
-            'message': 'Invalid OTP. Please check the OTP and try again.',
-            'invalid_otp': True
-        }, status=status.HTTP_400_BAD_REQUEST)
+        if result["status"] == "success":
+            # OTP verified, now create or get user
+            from apps.authentication.models import User
+            
+            # Clean mobile number for database
+            clean_mobile = otp_service.clean_mobile_number(mobile_number)
+            
+            try:
+                # Try to get existing user or create new one
+                user, created = User.objects.get_or_create(
+                    mobile_number=clean_mobile,
+                    defaults={
+                        'username': clean_mobile,  # Use mobile as username
+                        'is_mobile_verified': True,
+                    }
+                )
+                
+                # If user already exists, just mark as verified
+                if not created:
+                    user.is_mobile_verified = True
+                    user.save()
+                
+                # Create JWT response
+                jwt_response = create_jwt_response(user, is_new_user=created)
+                return Response(jwt_response, status=status.HTTP_200_OK)
+                
+            except Exception as db_error:
+                return Response({
+                    "status": "error",
+                    "message": "OTP verified but failed to create user. Please try again."
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            # OTP verification failed
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
         
     except Exception as e:
         return Response({
-            'success': False,
-            'message': 'Server error occurred during OTP verification',
-            'error': str(e)
+            "status": "error",
+            "message": "An unexpected server error occurred. Please try again."
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def refresh_token_api(request, version=None):
+    """
+    API endpoint to refresh access token using refresh token
+    
+    POST /api/v1/refresh-token/
+    Body: {"refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGci..."}
+    
+    Response: {
+        "status": "success"/"error",
+        "access_token": "eyJ0eXAiOiJKV1QiLCJhbGci...",
+        "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGci..."
+    }
+    """
+    try:
+        refresh_token = request.data.get('refresh_token')
+        
+        # Handle versioning
+        if hasattr(request, 'version'):
+            api_version = request.version
+            # Example: v2 might have different token refresh logic
+            if api_version == 'v2':
+                # Future v2 logic can go here
+                pass
+        
+        if not refresh_token:
+            return Response({
+                "status": "error",
+                "message": "Refresh token is required"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Create refresh token object
+            refresh = RefreshToken(refresh_token)
+            
+            # Get user from refresh token
+            user_id = refresh['user_id']
+            from apps.authentication.models import User
+            user = User.objects.get(id=user_id)
+            
+            # Generate new tokens
+            new_refresh = RefreshToken.for_user(user)
+            new_refresh['mobile_number'] = user.mobile_number
+            new_refresh['is_mobile_verified'] = user.is_mobile_verified
+            
+            return Response({
+                "status": "success",
+                "access_token": str(new_refresh.access_token),
+                "refresh_token": str(new_refresh),
+                "message": "Token refreshed successfully"
+            }, status=status.HTTP_200_OK)
+            
+        except TokenError:
+            return Response({
+                "status": "error",
+                "message": "Invalid or expired refresh token"
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        
+        except User.DoesNotExist:
+            return Response({
+                "status": "error",
+                "message": "User not found"
+            }, status=status.HTTP_404_NOT_FOUND)
+            
+    except Exception as e:
+        return Response({
+            "status": "error",
+            "message": "An unexpected server error occurred. Please try again."
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
