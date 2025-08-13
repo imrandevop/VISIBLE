@@ -144,14 +144,14 @@ REST_FRAMEWORK = {
 
 #! <----------------- authentication OTP section ----------------->
 
-MSG91_AUTH_KEY = config('MSG91_AUTH_KEY')
-MSG91_WIDGET_ID = config('MSG91_WIDGET_ID')
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake',
-    }
-}
+# MSG91_AUTH_KEY = config('MSG91_AUTH_KEY')
+# MSG91_WIDGET_ID = config('MSG91_WIDGET_ID')
+# CACHES = {
+#     'default': {
+#         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+#         'LOCATION': 'unique-snowflake',
+#     }
+# }
 
 
 #!<------------------JWT Settings------------------>
