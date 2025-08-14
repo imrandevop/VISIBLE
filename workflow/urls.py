@@ -3,6 +3,7 @@ from django.urls import path, include, re_path
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('', admin.site.urls),  # Redirect root to admin
     
     # Versioned API URLs
     re_path(r'^api/(?P<version>v[0-9]+)/', include([
