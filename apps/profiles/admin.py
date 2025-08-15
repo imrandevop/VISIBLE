@@ -3,7 +3,9 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 from django.utils.safestring import mark_safe
+from django import forms
 from apps.profiles.models import UserProfile
+from apps.authentication.models import User
 
 
 @admin.register(UserProfile)
@@ -74,6 +76,16 @@ class UserProfileAdmin(admin.ModelAdmin):
     )
     
     actions = ['mark_profile_complete', 'mark_profile_incomplete', 'refresh_completion_status']
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "user":
+            # Get users who don't already have profiles
+            existing_profile_user_ids = UserProfile.objects.values_list('user_id', flat=True)
+            kwargs["queryset"] = User.objects.filter(
+                is_staff=False, 
+                is_mobile_verified=True
+            ).exclude(id__in=existing_profile_user_ids)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
     def mobile_number(self, obj):
         return obj.user.mobile_number
