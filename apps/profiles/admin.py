@@ -8,8 +8,29 @@ from apps.profiles.models import UserProfile
 from apps.authentication.models import User
 
 
+class UserProfileForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Get users who don't already have profiles
+        existing_profile_user_ids = UserProfile.objects.values_list('user_id', flat=True)
+        if self.instance.pk:
+            # If editing existing profile, include the current user
+            existing_profile_user_ids = existing_profile_user_ids.exclude(id=self.instance.user_id)
+        
+        # Set up the user field properly
+        self.fields['user'].queryset = User.objects.filter(
+            is_staff=False, 
+            is_mobile_verified=True
+        ).exclude(id__in=existing_profile_user_ids)
+    
+    class Meta:
+        model = UserProfile
+        fields = '__all__'
+
+
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
+    form = UserProfileForm
     list_display = [
         'full_name', 
         'mobile_number', 
@@ -34,61 +55,63 @@ class UserProfileAdmin(admin.ModelAdmin):
         'user__username'
     ]
     
-    readonly_fields = [
-        'created_at', 
-        'updated_at',
-        'profile_photo_preview',
-        'mobile_number',
-        'work_details_link'
-    ]
+    def get_readonly_fields(self, request, obj=None):
+        readonly_fields = [
+            'created_at', 
+            'updated_at',
+            'profile_photo_preview',
+            'work_details_link'
+        ]
+        # Only show mobile_number as readonly when editing existing object
+        if obj:
+            readonly_fields.append('mobile_number')
+        return readonly_fields
     
-    fieldsets = (
-        ('Basic Information', {
-            'fields': (
-                'user',
-                'mobile_number', 
-                'full_name', 
-                'date_of_birth', 
-                'gender',
-                'user_type'
-            )
-        }),
-        ('Profile Photo', {
-            'fields': (
-                'profile_photo',
-                'profile_photo_preview'
-            )
-        }),
-        ('Status', {
-            'fields': (
-                'profile_complete', 
-                'can_access_app'
-            )
-        }),
-        ('Work Information', {
-            'fields': ('work_details_link',),
-            'classes': ('collapse',)
-        }),
-        ('Timestamps', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        })
-    )
+    def get_fieldsets(self, request, obj=None):
+        basic_fields = ['user', 'full_name', 'date_of_birth', 'gender', 'user_type']
+        if obj:  # Only show mobile_number when editing existing object
+            basic_fields.insert(1, 'mobile_number')
+            
+        return (
+            ('Basic Information', {
+                'fields': basic_fields
+            }),
+            ('Profile Photo', {
+                'fields': (
+                    'profile_photo',
+                    'profile_photo_preview'
+                )
+            }),
+            ('Status', {
+                'fields': (
+                    'profile_complete', 
+                    'can_access_app'
+                )
+            }),
+            ('Work Information', {
+                'fields': ('work_details_link',),
+                'classes': ('collapse',)
+            }),
+            ('Timestamps', {
+                'fields': ('created_at', 'updated_at'),
+                'classes': ('collapse',)
+            })
+        )
     
     actions = ['mark_profile_complete', 'mark_profile_incomplete', 'refresh_completion_status']
     
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "user":
-            # Get users who don't already have profiles
-            existing_profile_user_ids = UserProfile.objects.values_list('user_id', flat=True)
-            kwargs["queryset"] = User.objects.filter(
-                is_staff=False, 
-                is_mobile_verified=True
-            ).exclude(id__in=existing_profile_user_ids)
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    def save_model(self, request, obj, form, change):
+        # Ensure the user field is properly set
+        if hasattr(form, 'cleaned_data') and 'user' in form.cleaned_data:
+            user = form.cleaned_data['user']
+            if user and hasattr(user, 'id'):
+                obj.user = user
+        super().save_model(request, obj, form, change)
     
     def mobile_number(self, obj):
-        return obj.user.mobile_number
+        if obj and obj.user:
+            return obj.user.mobile_number
+        return "Not assigned"
     mobile_number.short_description = 'Mobile Number'
     mobile_number.admin_order_field = 'user__mobile_number'
     

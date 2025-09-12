@@ -16,6 +16,9 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['workflow-z7zt.onrender.com', 'localhost', '127.0.0.1']
 
+# Custom User Model
+AUTH_USER_MODEL = 'authentication.User'
+
 
 
 # Application definition
