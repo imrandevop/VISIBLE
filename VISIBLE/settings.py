@@ -52,7 +52,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "workflow.urls"
+ROOT_URLCONF = "VISIBLE.urls"
 
 TEMPLATES = [
     {
@@ -69,7 +69,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "workflow.wsgi.application"
+WSGI_APPLICATION = "VISIBLE.wsgi.application"
 
 
 # Database
