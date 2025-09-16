@@ -6,7 +6,7 @@ def auth_info(request):
     return JsonResponse({"app": "authentication", "status": "active", "endpoints": ["send-otp", "verify-otp", "refresh-token"]})
 
 urlpatterns = [
-    path('', auth_info, name='auth_info'),  # Add this line to handle /api/1/ requests
+    path('', auth_info, name='auth_info'),
     # OTP endpoints
     path('send-otp/', views.send_otp_api, name='send_otp'),
     path('verify-otp/', views.verify_otp_api, name='verify_otp'),
