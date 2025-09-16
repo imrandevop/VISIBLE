@@ -223,3 +223,12 @@ def refresh_token_api(request, version=None):
             "status": "error",
             "message": "An unexpected server error occurred. Please try again."
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+
+def auth_info(request):
+    from django.http import JsonResponse
+    return JsonResponse({
+        "app": "authentication", 
+        "status": "active", 
+        "endpoints": ["send-otp", "verify-otp", "refresh-token"]
+    })
