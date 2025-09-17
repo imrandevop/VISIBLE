@@ -15,7 +15,7 @@ SECRET_KEY = config('SECRET_KEY', default="django-insecure-%9b_e2pl+ah^rm7ljs4u9
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['workflow-z7zt.onrender.com', 'localhost', '127.0.0.1', '143.110.178.190']
+ALLOWED_HOSTS = ['api.visibleapp.in','workflow-z7zt.onrender.com', 'localhost', '127.0.0.1', '143.110.178.190']
 
 # Custom User Model
 AUTH_USER_MODEL = 'authentication.User'
