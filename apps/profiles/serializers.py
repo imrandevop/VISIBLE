@@ -25,11 +25,16 @@ class ProfileSetupSerializer(serializers.Serializer):
     profile_photo = serializers.ImageField(required=False, allow_null=True)
     
     # Worker-specific Fields (Optional)
-    main_category_id = serializers.IntegerField(required=False, allow_null=True)
-    sub_category_names = serializers.CharField(
-        required=False, 
-        allow_blank=True,
-        help_text="Space-separated subcategory names (case-insensitive). Example: 'Plumber Electrician'"
+    main_category_id = serializers.CharField(
+        required=False,
+        allow_null=True,
+        help_text="Main category code. Example: 'MS0001'"
+    )
+    sub_category_ids = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_empty=True,
+        help_text="List of subcategory codes. Example: ['SS0001', 'SS0002']"
     )
     years_experience = serializers.IntegerField(required=False, allow_null=True, min_value=0)
     skills_description = serializers.CharField(required=False, allow_blank=True, max_length=500)
@@ -73,38 +78,33 @@ class ProfileSetupSerializer(serializers.Serializer):
             # Validate main category exists
             main_category_id = attrs.get('main_category_id')
             try:
-                main_category = WorkCategory.objects.get(id=main_category_id, is_active=True)
+                main_category = WorkCategory.objects.get(category_code=main_category_id, is_active=True)
                 attrs['_main_category'] = main_category
             except WorkCategory.DoesNotExist:
                 raise serializers.ValidationError({
-                    'main_category_id': 'Invalid work category selected'
+                    'main_category_id': f'Invalid main category: {main_category_id}'
                 })
-            
+
             # Validate subcategories belong to main category
-            sub_category_names = attrs.get('sub_category_names', '').strip()
-            if sub_category_names:
-                # Split space-separated names and clean them
-                subcategory_names_list = [name.strip() for name in sub_category_names.split() if name.strip()]
-                
-                if subcategory_names_list:
-                    # Find subcategories by display_name (case-insensitive)
-                    valid_subcategories = WorkSubCategory.objects.filter(
-                        category_id=main_category_id,
-                        display_name__iregex=r'^(' + '|'.join(subcategory_names_list) + ')$',
-                        is_active=True
-                    )
-                    
-                    found_names = [sub.display_name.lower() for sub in valid_subcategories]
-                    requested_names = [name.lower() for name in subcategory_names_list]
-                    
-                    # Check if all requested subcategories were found
-                    invalid_names = [name for name in requested_names if name not in found_names]
-                    if invalid_names:
-                        raise serializers.ValidationError({
-                            'sub_category_names': f'Invalid subcategories: {", ".join(invalid_names)}'
-                        })
-                    
-                    attrs['_subcategories'] = valid_subcategories
+            sub_category_ids = attrs.get('sub_category_ids', [])
+            if sub_category_ids:
+                # Find subcategories by subcategory_code
+                valid_subcategories = WorkSubCategory.objects.filter(
+                    category=main_category,
+                    subcategory_code__in=sub_category_ids,
+                    is_active=True
+                )
+
+                found_codes = [sub.subcategory_code for sub in valid_subcategories]
+
+                # Check if all requested subcategories were found
+                invalid_codes = [code for code in sub_category_ids if code not in found_codes]
+                if invalid_codes:
+                    raise serializers.ValidationError({
+                        'sub_category_ids': f'Invalid subcategories: {", ".join(invalid_codes)}'
+                    })
+
+                attrs['_subcategories'] = valid_subcategories
             
             # Driver-specific validation
             if main_category.name == 'driver':
@@ -208,12 +208,28 @@ class ProfileSetupSerializer(serializers.Serializer):
 
 class ProfileResponseSerializer(serializers.ModelSerializer):
     """Serializer for profile response data"""
-    
+    main_category_id = serializers.SerializerMethodField()
+    sub_category_ids = serializers.SerializerMethodField()
+
     class Meta:
         model = UserProfile
         fields = [
             'id', 'full_name', 'user_type', 'gender', 'date_of_birth',
             'profile_photo', 'profile_complete', 'can_access_app',
+            'main_category_id', 'sub_category_ids',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_main_category_id(self, obj):
+        """Get main category code for workers"""
+        if obj.user_type == 'worker' and hasattr(obj, 'work_selection') and obj.work_selection:
+            return obj.work_selection.main_category.category_code
+        return None
+
+    def get_sub_category_ids(self, obj):
+        """Get list of subcategory codes for workers"""
+        if obj.user_type == 'worker' and hasattr(obj, 'work_selection') and obj.work_selection:
+            subcategories = obj.work_selection.selected_subcategories.all()
+            return [sub.sub_category.subcategory_code for sub in subcategories]
+        return []

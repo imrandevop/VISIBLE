@@ -29,8 +29,8 @@ def profile_setup_api(request, version=None):
         profile_photo: <file> (optional)
         
         # Worker-specific fields (required if user_type=worker)
-        main_category_id: 1
-        sub_category_names: "Plumber Electrician"
+        main_category_id: "MS0001"
+        sub_category_ids: ["SS0001", "SS0002"]
         years_experience: 5
         skills_description: "Expert plumber with residential experience"
         portfolio_images: [<file1>, <file2>, <file3>] (1-3 images required)
@@ -54,6 +54,8 @@ def profile_setup_api(request, version=None):
                 "profile_photo": "/media/profiles/photo.jpg",
                 "profile_complete": true,
                 "can_access_app": true,
+                "main_category_id": "MS0001",
+                "sub_category_ids": ["SS0001", "SS0002"],
                 "created_at": "2025-08-15T10:30:00Z",
                 "updated_at": "2025-08-15T10:30:00Z"
             }
@@ -64,9 +66,9 @@ def profile_setup_api(request, version=None):
             "status": "error",
             "message": "Validation failed",
             "errors": {
-                "main_category_id": ["Main work category is required for workers"],
+                "main_category_id": ["Invalid main category: MS9999"],
                 "portfolio_images": ["At least one portfolio image is required for workers"],
-                "sub_category_names": ["Invalid subcategories: invalid_name"]
+                "sub_category_ids": ["Invalid subcategories: SS9999, SS8888"]
             }
         }
     """
@@ -153,6 +155,8 @@ def get_profile_api(request, version=None):
                 "profile_photo": "/media/profiles/photo.jpg",
                 "profile_complete": true,
                 "can_access_app": true,
+                "main_category_id": "MS0001",
+                "sub_category_ids": ["SS0001", "SS0002"],
                 "created_at": "2025-08-15T10:30:00Z",
                 "updated_at": "2025-08-15T10:30:00Z"
             }
