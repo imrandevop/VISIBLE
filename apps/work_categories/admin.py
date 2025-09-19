@@ -11,17 +11,19 @@ from apps.work_categories.models import (
 class WorkSubCategoryInline(admin.TabularInline):
     model = WorkSubCategory
     extra = 1
-    fields = ['name', 'display_name', 'description', 'is_active', 'sort_order']
+    fields = ['subcategory_code', 'name', 'display_name', 'description', 'is_active', 'sort_order']
+    readonly_fields = ['subcategory_code']
 
 
 @admin.register(WorkCategory)
 class WorkCategoryAdmin(admin.ModelAdmin):
     list_display = [
-        'display_name', 
-        'name', 
+        'category_code',
+        'display_name',
+        'name',
         'subcategory_count',
         'active_users_count',
-        'is_active', 
+        'is_active',
         'sort_order',
         'created_at'
     ]
@@ -33,8 +35,9 @@ class WorkCategoryAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {
             'fields': (
-                'name', 
-                'display_name', 
+                'category_code',
+                'name',
+                'display_name',
                 'description',
                 'is_active',
                 'sort_order'
@@ -46,7 +49,7 @@ class WorkCategoryAdmin(admin.ModelAdmin):
         })
     )
     
-    readonly_fields = ['created_at', 'updated_at']
+    readonly_fields = ['category_code', 'created_at', 'updated_at']
     inlines = [WorkSubCategoryInline]
     
     def subcategory_count(self, obj):
@@ -64,11 +67,12 @@ class WorkCategoryAdmin(admin.ModelAdmin):
 @admin.register(WorkSubCategory)
 class WorkSubCategoryAdmin(admin.ModelAdmin):
     list_display = [
-        'display_name', 
-        'name', 
-        'category', 
+        'subcategory_code',
+        'display_name',
+        'name',
+        'category',
         'users_count',
-        'is_active', 
+        'is_active',
         'sort_order'
     ]
     
@@ -79,9 +83,10 @@ class WorkSubCategoryAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {
             'fields': (
+                'subcategory_code',
                 'category',
-                'name', 
-                'display_name', 
+                'name',
+                'display_name',
                 'description',
                 'is_active',
                 'sort_order'
@@ -93,8 +98,8 @@ class WorkSubCategoryAdmin(admin.ModelAdmin):
         })
     )
     
-    readonly_fields = ['created_at', 'updated_at']
-    
+    readonly_fields = ['subcategory_code', 'created_at', 'updated_at']
+
     def users_count(self, obj):
         count = UserWorkSubCategory.objects.filter(sub_category=obj).count()
         return f"{count} users"

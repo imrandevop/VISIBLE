@@ -23,21 +23,21 @@ def list_work_categories_api(request, version=None):
             "status": "success",
             "categories": [
                 {
-                    "id": 1,
+                    "id": "MS0001",
                     "name": "worker",
                     "display_name": "Worker",
                     "description": "General worker services",
                     "subcategories": "Plumber Electrician Carpenter Painter"
                 },
                 {
-                    "id": 2,
+                    "id": "MS0002",
                     "name": "driver",
                     "display_name": "Driver",
                     "description": "Transportation services",
                     "subcategories": "Taxi Delivery Truck Auto-Rickshaw"
                 },
                 {
-                    "id": 3,
+                    "id": "MS0003",
                     "name": "business",
                     "display_name": "Business",
                     "description": "Business services",
@@ -61,7 +61,7 @@ def list_work_categories_api(request, version=None):
             subcategory_names = " ".join([sub.display_name for sub in subcategories])
             
             categories_data.append({
-                'id': category.id,
+                'id': category.category_code,
                 'name': category.name,
                 'display_name': category.display_name,
                 'description': category.description,

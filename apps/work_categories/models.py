@@ -6,6 +6,7 @@ from django.core.validators import FileExtensionValidator
 
 class WorkCategory(BaseModel):
     """Main work categories like worker, driver, business"""
+    category_code = models.CharField(max_length=10, unique=True, editable=False, null=True, blank=True)
     name = models.CharField(max_length=50, unique=True)
     display_name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
@@ -20,14 +21,27 @@ class WorkCategory(BaseModel):
         ordering = ['sort_order', 'display_name']
         verbose_name_plural = "Work Categories"
     
+    def save(self, *args, **kwargs):
+        if not self.category_code:
+            # Generate category code in format MS0001
+            last_category = WorkCategory.objects.order_by('id').last()
+            if last_category:
+                last_number = int(last_category.category_code[2:])  # Extract number from MS0001
+                new_number = last_number + 1
+            else:
+                new_number = 1
+            self.category_code = f"MS{new_number:04d}"
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.display_name
 
 class WorkSubCategory(BaseModel):
     """Sub-categories under main work categories"""
+    subcategory_code = models.CharField(max_length=10, unique=True, editable=False, null=True, blank=True)
     category = models.ForeignKey(
-        WorkCategory, 
-        on_delete=models.CASCADE, 
+        WorkCategory,
+        on_delete=models.CASCADE,
         related_name='subcategories'
     )
     name = models.CharField(max_length=50)
@@ -44,6 +58,18 @@ class WorkSubCategory(BaseModel):
         unique_together = ['category', 'name']
         verbose_name_plural = "Work Sub Categories"
     
+    def save(self, *args, **kwargs):
+        if not self.subcategory_code:
+            # Generate subcategory code in format SS0001
+            last_subcategory = WorkSubCategory.objects.order_by('id').last()
+            if last_subcategory:
+                last_number = int(last_subcategory.subcategory_code[2:])  # Extract number from SS0001
+                new_number = last_number + 1
+            else:
+                new_number = 1
+            self.subcategory_code = f"SS{new_number:04d}"
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.category.display_name} - {self.display_name}"
 
