@@ -23,6 +23,7 @@ class ProfileSetupSerializer(serializers.Serializer):
     date_of_birth = serializers.DateField()
     gender = serializers.ChoiceField(choices=['male', 'female'])
     profile_photo = serializers.ImageField(required=False, allow_null=True)
+    languages = serializers.CharField(required=False, allow_blank=True, help_text="Languages spoken, comma-separated")
     
     # Provider-specific Fields (Optional)
     main_category_id = serializers.CharField(
@@ -144,6 +145,7 @@ class ProfileSetupSerializer(serializers.Serializer):
                 'gender': validated_data['gender'],
                 'profile_photo': validated_data.get('profile_photo'),
                 'user_type': user_type,
+                'languages': validated_data.get('languages', ''),
                 'profile_complete': True,
                 'can_access_app': True
             }
@@ -210,16 +212,22 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
     """Serializer for profile response data"""
     main_category_id = serializers.SerializerMethodField()
     sub_category_ids = serializers.SerializerMethodField()
+    age = serializers.ReadOnlyField()
+    mobile_number = serializers.ReadOnlyField()
+    skills = serializers.SerializerMethodField()
+    years_experience = serializers.SerializerMethodField()
+    profile_photo = serializers.SerializerMethodField()
 
     class Meta:
         model = UserProfile
         fields = [
-            'id', 'full_name', 'user_type', 'gender', 'date_of_birth',
+            'id', 'full_name', 'user_type', 'gender', 'date_of_birth', 'age',
             'profile_photo', 'profile_complete', 'can_access_app',
-            'main_category_id', 'sub_category_ids',
+            'mobile_number', 'languages', 'provider_id',
+            'main_category_id', 'sub_category_ids', 'skills', 'years_experience',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'age', 'mobile_number', 'provider_id', 'created_at', 'updated_at']
 
     def get_main_category_id(self, obj):
         """Get main category code for providers"""
@@ -233,3 +241,25 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
             subcategories = obj.work_selection.selected_subcategories.all()
             return [sub.sub_category.subcategory_code for sub in subcategories]
         return []
+
+    def get_skills(self, obj):
+        """Get subcategory names as skills for providers"""
+        if obj.user_type == 'provider' and hasattr(obj, 'work_selection') and obj.work_selection:
+            subcategories = obj.work_selection.selected_subcategories.all()
+            return [sub.sub_category.name for sub in subcategories]
+        return []
+
+    def get_years_experience(self, obj):
+        """Get years of experience for providers"""
+        if obj.user_type == 'provider' and hasattr(obj, 'work_selection') and obj.work_selection:
+            return obj.work_selection.years_experience
+        return None
+
+    def get_profile_photo(self, obj):
+        """Get full URL for profile photo"""
+        if obj.profile_photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_photo.url)
+            return obj.profile_photo.url
+        return None
