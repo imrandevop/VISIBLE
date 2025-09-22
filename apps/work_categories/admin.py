@@ -78,7 +78,7 @@ class WorkSubCategoryAdmin(admin.ModelAdmin):
     
     list_filter = ['category', 'is_active', 'created_at']
     search_fields = ['name', 'display_name', 'description']
-    ordering = ['category__sort_order', 'sort_order', 'name']
+    ordering = ['subcategory_code']
     
     fieldsets = (
         (None, {
