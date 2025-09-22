@@ -14,17 +14,17 @@ from apps.verification.models import AadhaarVerification, LicenseVerification
 class ProfileSetupSerializer(serializers.Serializer):
     """
     Single comprehensive serializer for complete profile setup
-    Handles both worker and seeker profiles with all related data
+    Handles both provider and seeker profiles with all related data
     """
     
     # Basic Profile Fields (Required for all)
-    user_type = serializers.ChoiceField(choices=['worker', 'seeker'])
+    user_type = serializers.ChoiceField(choices=['provider', 'seeker'])
     full_name = serializers.CharField(max_length=100)
     date_of_birth = serializers.DateField()
     gender = serializers.ChoiceField(choices=['male', 'female'])
     profile_photo = serializers.ImageField(required=False, allow_null=True)
     
-    # Worker-specific Fields (Optional)
+    # Provider-specific Fields (Optional)
     main_category_id = serializers.CharField(
         required=False,
         allow_null=True,
@@ -39,7 +39,7 @@ class ProfileSetupSerializer(serializers.Serializer):
     years_experience = serializers.IntegerField(required=False, allow_null=True, min_value=0)
     skills_description = serializers.CharField(required=False, allow_blank=True, max_length=500)
     
-    # Portfolio Images (Worker only, max 3)
+    # Portfolio Images (Provider only, max 3)
     portfolio_images = serializers.ListField(
         child=serializers.ImageField(),
         required=False,
@@ -60,19 +60,19 @@ class ProfileSetupSerializer(serializers.Serializer):
         """Custom validation for business rules"""
         user_type = attrs.get('user_type')
         
-        # Worker validation
-        if user_type == 'worker':
-            # Work category is required for workers
+        # Provider validation
+        if user_type == 'provider':
+            # Work category is required for providers
             if not attrs.get('main_category_id'):
                 raise serializers.ValidationError({
-                    'main_category_id': 'Main work category is required for workers'
+                    'main_category_id': 'Main work category is required for providers'
                 })
             
-            # At least one portfolio image required for workers
+            # At least one portfolio image required for providers
             portfolio_images = attrs.get('portfolio_images', [])
             if not portfolio_images:
                 raise serializers.ValidationError({
-                    'portfolio_images': 'At least one portfolio image is required for workers'
+                    'portfolio_images': 'At least one portfolio image is required for providers'
                 })
             
             # Validate main category exists
@@ -149,8 +149,8 @@ class ProfileSetupSerializer(serializers.Serializer):
             }
         )
         
-        # Handle worker-specific data
-        if user_type == 'worker' and main_category:
+        # Handle provider-specific data
+        if user_type == 'provider' and main_category:
             # Create UserWorkSelection
             work_selection, _ = UserWorkSelection.objects.update_or_create(
                 user=profile,
@@ -222,14 +222,14 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def get_main_category_id(self, obj):
-        """Get main category code for workers"""
-        if obj.user_type == 'worker' and hasattr(obj, 'work_selection') and obj.work_selection:
+        """Get main category code for providers"""
+        if obj.user_type == 'provider' and hasattr(obj, 'work_selection') and obj.work_selection:
             return obj.work_selection.main_category.category_code
         return None
 
     def get_sub_category_ids(self, obj):
-        """Get list of subcategory codes for workers"""
-        if obj.user_type == 'worker' and hasattr(obj, 'work_selection') and obj.work_selection:
+        """Get list of subcategory codes for providers"""
+        if obj.user_type == 'provider' and hasattr(obj, 'work_selection') and obj.work_selection:
             subcategories = obj.work_selection.selected_subcategories.all()
             return [sub.sub_category.subcategory_code for sub in subcategories]
         return []

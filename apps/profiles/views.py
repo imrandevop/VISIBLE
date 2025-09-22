@@ -22,13 +22,13 @@ def profile_setup_api(request, version=None):
         Content-Type: multipart/form-data
     
     Body (form-data):
-        user_type: "worker" or "seeker"
+        user_type: "provider" or "seeker"
         full_name: "John Doe"
         date_of_birth: "1990-01-15"
         gender: "male" or "female"
         profile_photo: <file> (optional)
         
-        # Worker-specific fields (required if user_type=worker)
+        # Provider-specific fields (required if user_type=provider)
         main_category_id: "MS0001"
         sub_category_ids: ["SS0001", "SS0002"]
         years_experience: 5
@@ -48,7 +48,7 @@ def profile_setup_api(request, version=None):
             "profile": {
                 "id": 1,
                 "full_name": "John Doe",
-                "user_type": "worker",
+                "user_type": "provider",
                 "gender": "male",
                 "date_of_birth": "1990-01-15",
                 "profile_photo": "/media/profiles/photo.jpg",
@@ -67,7 +67,7 @@ def profile_setup_api(request, version=None):
             "message": "Validation failed",
             "errors": {
                 "main_category_id": ["Invalid main category: MS9999"],
-                "portfolio_images": ["At least one portfolio image is required for workers"],
+                "portfolio_images": ["At least one portfolio image is required for providers"],
                 "sub_category_ids": ["Invalid subcategories: SS9999, SS8888"]
             }
         }
@@ -149,7 +149,7 @@ def get_profile_api(request, version=None):
             "profile": {
                 "id": 1,
                 "full_name": "John Doe",
-                "user_type": "worker",
+                "user_type": "provider",
                 "gender": "male",
                 "date_of_birth": "1990-01-15",
                 "profile_photo": "/media/profiles/photo.jpg",
@@ -206,7 +206,7 @@ def check_profile_status_api(request, version=None):
             "status": "success",
             "profile_complete": true,
             "can_access_app": true,
-            "user_type": "worker",
+            "user_type": "provider",
             "next_action": "proceed_to_app" // or "complete_profile"
         }
     """

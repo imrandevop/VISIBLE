@@ -11,7 +11,7 @@ class UserProfile(BaseModel):
     ]
     
     USER_TYPE_CHOICES = [
-        ('worker', 'Worker'),
+        ('provider', 'Provider'),
         ('seeker', 'Seeker'),
     ]
     
@@ -67,8 +67,8 @@ class UserProfile(BaseModel):
             self.save(update_fields=['profile_complete', 'can_access_app'])
             return True
             
-        elif self.user_type == 'worker':
-            # Worker needs work selection and portfolio
+        elif self.user_type == 'provider':
+            # Provider needs work selection and portfolio
             work_selection = hasattr(self, 'work_selection') and self.work_selection
             if not work_selection:
                 self.profile_complete = False
