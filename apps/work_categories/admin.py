@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.http import HttpResponseRedirect
 from apps.work_categories.models import (
     WorkCategory, WorkSubCategory, UserWorkSelection,
-    UserWorkSubCategory, WorkPortfolioImage
+    UserWorkSubCategory, WorkPortfolioImage, ServiceRequest
 )
 from apps.work_categories.forms import BulkSubCategoryForm
 
@@ -317,3 +317,43 @@ class WorkPortfolioImageAdmin(admin.ModelAdmin):
             )
         return "No Image"
     image_preview.short_description = 'Preview'
+
+
+@admin.register(ServiceRequest)
+class ServiceRequestAdmin(admin.ModelAdmin):
+    list_display = [
+        'user_mobile',
+        'service_name_preview',
+        'created_at'
+    ]
+
+    list_filter = ['created_at']
+    search_fields = ['user__mobile_number', 'service_name']
+    ordering = ['-created_at']
+
+    fieldsets = (
+        ('Request Information', {
+            'fields': (
+                'user',
+                'service_name'
+            )
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
+
+    readonly_fields = ['created_at', 'updated_at']
+
+    def user_mobile(self, obj):
+        return obj.user.mobile_number
+    user_mobile.short_description = 'Mobile Number'
+    user_mobile.admin_order_field = 'user__mobile_number'
+
+    def service_name_preview(self, obj):
+        if len(obj.service_name) > 50:
+            return obj.service_name[:50] + "..."
+        return obj.service_name
+    service_name_preview.short_description = 'Service Name'
+    service_name_preview.admin_order_field = 'service_name'

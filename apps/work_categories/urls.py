@@ -7,4 +7,5 @@ app_name = 'work_categories'
 urlpatterns = [
     # Work category endpoints
     path('', views.list_work_categories_api, name='list_categories'),
+    path('request-service/', views.request_service_api, name='request_service'),
 ]

@@ -4,7 +4,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from apps.work_categories.models import WorkCategory, WorkSubCategory
+from apps.work_categories.models import WorkCategory, WorkSubCategory, ServiceRequest
+from django.db import IntegrityError
 
 
 @api_view(['GET'])
@@ -77,4 +78,58 @@ def list_work_categories_api(request, version=None):
         return Response({
             "status": "error",
             "message": "An unexpected server error occurred. Please try again."
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def request_service_api(request, version=None):
+    """
+    API endpoint for users to request services not available in categories
+
+    POST /api/v1/work-categories/request-service/
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Body:
+        {
+            "service_name": "Custom plumbing service"
+        }
+
+    Response:
+        {
+            "name": "Custom plumbing service",
+            "message": "Service request submitted successfully"
+        }
+    """
+    try:
+        service_name = request.data.get('service_name', '').strip()
+
+        if not service_name:
+            return Response({
+                "error": "Service name is required"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create service request
+        try:
+            service_request = ServiceRequest.objects.create(
+                user=request.user,
+                service_name=service_name
+            )
+
+            return Response({
+                "name": service_name,
+                "message": "Service request submitted successfully"
+            }, status=status.HTTP_201_CREATED)
+
+        except IntegrityError:
+            # User already requested this exact service
+            return Response({
+                "error": "You have already requested this service"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        return Response({
+            "error": "An unexpected server error occurred. Please try again."
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

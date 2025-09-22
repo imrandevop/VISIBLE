@@ -132,3 +132,20 @@ class WorkPortfolioImage(BaseModel):
     
     def __str__(self):
         return f"{self.user_work_selection.user.full_name} - Image {self.image_order}"
+
+class ServiceRequest(BaseModel):
+    """User requests for services not available in categories"""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='service_requests'
+    )
+    service_name = models.TextField()
+
+    class Meta:
+        unique_together = ['user', 'service_name']
+        ordering = ['-created_at']
+        verbose_name_plural = "Service Requests"
+
+    def __str__(self):
+        return f"{self.user.mobile_number} - {self.service_name[:50]}"
