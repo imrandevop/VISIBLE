@@ -1,11 +1,15 @@
 # apps/work_categories/admin.py
 from django.contrib import admin
 from django.utils.html import format_html
-from django.urls import reverse
+from django.urls import reverse, path
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.http import HttpResponseRedirect
 from apps.work_categories.models import (
-    WorkCategory, WorkSubCategory, UserWorkSelection, 
+    WorkCategory, WorkSubCategory, UserWorkSelection,
     UserWorkSubCategory, WorkPortfolioImage
 )
+from apps.work_categories.forms import BulkSubCategoryForm
 
 
 class WorkSubCategoryInline(admin.TabularInline):
@@ -75,11 +79,11 @@ class WorkSubCategoryAdmin(admin.ModelAdmin):
         'is_active',
         'sort_order'
     ]
-    
+
     list_filter = ['category', 'is_active', 'created_at']
     search_fields = ['name', 'display_name', 'description']
     ordering = ['subcategory_code']
-    
+
     fieldsets = (
         (None, {
             'fields': (
@@ -97,8 +101,68 @@ class WorkSubCategoryAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         })
     )
-    
+
     readonly_fields = ['subcategory_code', 'created_at', 'updated_at']
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('bulk-create/', self.bulk_create_view, name='worksubcategory_bulk_create'),
+        ]
+        return custom_urls + urls
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context['bulk_create_url'] = reverse('admin:worksubcategory_bulk_create')
+        return super().changelist_view(request, extra_context)
+
+    def bulk_create_view(self, request):
+        if request.method == 'POST':
+            form = BulkSubCategoryForm(request.POST)
+            if form.is_valid():
+                category = form.cleaned_data['category']
+                names = form.cleaned_data['subcategory_names'].strip().split('\n')
+                names = [name.strip() for name in names if name.strip()]
+
+                created_count = 0
+                skipped_count = 0
+
+                # Get the last sort order for this category
+                last_subcategory = WorkSubCategory.objects.filter(category=category).order_by('-sort_order').first()
+                next_sort_order = (last_subcategory.sort_order + 1) if last_subcategory else 1
+
+                for name in names:
+                    # Check if subcategory already exists for this category
+                    if not WorkSubCategory.objects.filter(category=category, name=name).exists():
+                        WorkSubCategory.objects.create(
+                            category=category,
+                            name=name,
+                            display_name=name,
+                            description='',
+                            is_active=True,
+                            sort_order=next_sort_order
+                        )
+                        created_count += 1
+                        next_sort_order += 1
+                    else:
+                        skipped_count += 1
+
+                if created_count > 0:
+                    messages.success(request, f'Successfully created {created_count} subcategories.')
+                if skipped_count > 0:
+                    messages.warning(request, f'Skipped {skipped_count} subcategories (already exist).')
+
+                return HttpResponseRedirect(reverse('admin:work_categories_worksubcategory_changelist'))
+        else:
+            form = BulkSubCategoryForm()
+
+        context = {
+            'form': form,
+            'title': 'Bulk Create Subcategories',
+            'opts': self.model._meta,
+            'has_change_permission': self.has_change_permission(request),
+        }
+        return render(request, 'admin/work_categories/bulk_create_subcategories.html', context)
 
     def users_count(self, obj):
         count = UserWorkSubCategory.objects.filter(sub_category=obj).count()
