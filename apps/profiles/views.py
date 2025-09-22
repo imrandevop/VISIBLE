@@ -87,7 +87,7 @@ def profile_setup_api(request, version=None):
                 return Response({
                     "status": "error",
                     "message": "Profile is already completed",
-                    "profile": ProfileResponseSerializer(existing_profile).data
+                    "profile": ProfileResponseSerializer(existing_profile, context={'request': request}).data
                 }, status=status.HTTP_400_BAD_REQUEST)
         except UserProfile.DoesNotExist:
             pass  # No existing profile, continue with setup
@@ -102,7 +102,7 @@ def profile_setup_api(request, version=None):
                     profile = serializer.save()
                 
                 # Return success response
-                response_data = ProfileResponseSerializer(profile).data
+                response_data = ProfileResponseSerializer(profile, context={'request': request}).data
                 return Response({
                     "status": "success",
                     "message": "Profile setup completed successfully",
@@ -170,7 +170,7 @@ def get_profile_api(request, version=None):
     """
     try:
         profile = UserProfile.objects.get(user=request.user)
-        response_data = ProfileResponseSerializer(profile).data
+        response_data = ProfileResponseSerializer(profile, context={'request': request}).data
         
         return Response({
             "status": "success",
