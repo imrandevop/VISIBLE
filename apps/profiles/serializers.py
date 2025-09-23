@@ -3,9 +3,12 @@ from rest_framework import serializers
 from django.db import transaction
 from django.core.exceptions import ValidationError
 
-from apps.profiles.models import UserProfile
+from apps.profiles.models import (
+    UserProfile, DriverServiceData, PropertyServiceData,
+    SOSServiceData, ServicePortfolioImage
+)
 from apps.work_categories.models import (
-    WorkCategory, WorkSubCategory, UserWorkSelection, 
+    WorkCategory, WorkSubCategory, UserWorkSelection,
     UserWorkSubCategory, WorkPortfolioImage
 )
 from apps.verification.models import AadhaarVerification, LicenseVerification
@@ -13,44 +16,89 @@ from apps.verification.models import AadhaarVerification, LicenseVerification
 
 class ProfileSetupSerializer(serializers.Serializer):
     """
-    Single comprehensive serializer for complete profile setup
-    Handles both provider and seeker profiles with all related data
+    Comprehensive serializer for complete profile setup
+    Handles provider (worker, driver, properties, SOS) and seeker profiles
     """
-    
+
     # Basic Profile Fields (Required for all)
     user_type = serializers.ChoiceField(choices=['provider', 'seeker'])
+    service_type = serializers.ChoiceField(
+        choices=['worker', 'driver', 'properties', 'SOS'],
+        required=False,
+        allow_null=True,
+        help_text="Required for providers"
+    )
     full_name = serializers.CharField(max_length=100)
     date_of_birth = serializers.DateField()
     gender = serializers.ChoiceField(choices=['male', 'female'])
     profile_photo = serializers.ImageField(required=False, allow_null=True)
-    languages = serializers.CharField(required=False, allow_blank=True, help_text="Languages spoken, comma-separated")
-    
-    # Provider-specific Fields (Optional)
-    main_category_id = serializers.CharField(
-        required=False,
-        allow_null=True,
-        help_text="Main category code. Example: 'MS0001'"
-    )
-    sub_category_ids = serializers.ListField(
+    languages = serializers.ListField(
         child=serializers.CharField(),
         required=False,
         allow_empty=True,
-        help_text="List of subcategory codes. Example: ['SS0001', 'SS0002']"
+        help_text="Array of languages spoken"
     )
-    years_experience = serializers.IntegerField(required=False, allow_null=True, min_value=0)
-    skills_description = serializers.CharField(required=False, allow_blank=True, max_length=500)
-    
-    # Portfolio Images (Provider only, max 3)
+
+    # Portfolio Images (Required for all providers, max 3)
     portfolio_images = serializers.ListField(
         child=serializers.ImageField(),
         required=False,
         allow_empty=True,
         max_length=3
     )
-    
+
+    # Worker-specific Fields
+    main_category_id = serializers.CharField(required=False, allow_null=True)
+    sub_category_ids = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_empty=True
+    )
+    years_experience = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    skills = serializers.CharField(required=False, allow_blank=True)
+
+    # Driver-specific Fields
+    vehicle_types = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_empty=True
+    )
+    license_number = serializers.CharField(required=False, allow_blank=True, max_length=50)
+    vehicle_registration_number = serializers.CharField(required=False, allow_blank=True, max_length=20)
+    driving_years_experience = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    driving_experience_description = serializers.CharField(required=False, allow_blank=True)
+
+    # Property-specific Fields
+    property_types = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_empty=True
+    )
+    property_title = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    parking_availability = serializers.ChoiceField(
+        choices=['available', 'not_available', 'street_parking'],
+        required=False,
+        allow_blank=True
+    )
+    furnishing_type = serializers.ChoiceField(
+        choices=['furnished', 'semi_furnished', 'unfurnished'],
+        required=False,
+        allow_blank=True
+    )
+    property_description = serializers.CharField(required=False, allow_blank=True)
+
+    # SOS/Emergency-specific Fields
+    emergency_service_types = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_empty=True
+    )
+    contact_number = serializers.CharField(required=False, allow_blank=True, max_length=15)
+    current_location = serializers.CharField(required=False, allow_blank=True)
+    emergency_description = serializers.CharField(required=False, allow_blank=True)
+
     # Verification Fields (Optional)
     aadhaar_number = serializers.CharField(required=False, allow_blank=True, max_length=12)
-    license_number = serializers.CharField(required=False, allow_blank=True, max_length=50)
     license_type = serializers.ChoiceField(
         choices=['driving', 'commercial', 'other'],
         required=False,
@@ -60,61 +108,33 @@ class ProfileSetupSerializer(serializers.Serializer):
     def validate(self, attrs):
         """Custom validation for business rules"""
         user_type = attrs.get('user_type')
-        
+        service_type = attrs.get('service_type')
+
         # Provider validation
         if user_type == 'provider':
-            # Work category is required for providers
-            if not attrs.get('main_category_id'):
+            # Service type is required for providers
+            if not service_type:
                 raise serializers.ValidationError({
-                    'main_category_id': 'Main work category is required for providers'
+                    'service_type': 'Service type is required for providers'
                 })
-            
-            # At least one portfolio image required for providers
+
+            # Portfolio images required for all provider types
             portfolio_images = attrs.get('portfolio_images', [])
             if not portfolio_images:
                 raise serializers.ValidationError({
-                    'portfolio_images': 'At least one portfolio image is required for providers'
-                })
-            
-            # Validate main category exists
-            main_category_id = attrs.get('main_category_id')
-            try:
-                main_category = WorkCategory.objects.get(category_code=main_category_id, is_active=True)
-                attrs['_main_category'] = main_category
-            except WorkCategory.DoesNotExist:
-                raise serializers.ValidationError({
-                    'main_category_id': f'Invalid main category: {main_category_id}'
+                    'portfolio_images': 'At least one portfolio image is required for all providers'
                 })
 
-            # Validate subcategories belong to main category
-            sub_category_ids = attrs.get('sub_category_ids', [])
-            if sub_category_ids:
-                # Find subcategories by subcategory_code
-                valid_subcategories = WorkSubCategory.objects.filter(
-                    category=main_category,
-                    subcategory_code__in=sub_category_ids,
-                    is_active=True
-                )
+            # Service-specific validation
+            if service_type == 'worker':
+                self._validate_worker_fields(attrs)
+            elif service_type == 'driver':
+                self._validate_driver_fields(attrs)
+            elif service_type == 'properties':
+                self._validate_property_fields(attrs)
+            elif service_type == 'SOS':
+                self._validate_sos_fields(attrs)
 
-                found_codes = [sub.subcategory_code for sub in valid_subcategories]
-
-                # Check if all requested subcategories were found
-                invalid_codes = [code for code in sub_category_ids if code not in found_codes]
-                if invalid_codes:
-                    raise serializers.ValidationError({
-                        'sub_category_ids': f'Invalid subcategories: {", ".join(invalid_codes)}'
-                    })
-
-                attrs['_subcategories'] = valid_subcategories
-            
-            # Driver-specific validation
-            if main_category.name == 'driver':
-                license_number = attrs.get('license_number')
-                if not license_number:
-                    raise serializers.ValidationError({
-                        'license_number': 'License number is required for drivers'
-                    })
-        
         # Aadhaar validation
         aadhaar_number = attrs.get('aadhaar_number')
         if aadhaar_number:
@@ -122,20 +142,99 @@ class ProfileSetupSerializer(serializers.Serializer):
                 raise serializers.ValidationError({
                     'aadhaar_number': 'Aadhaar number must be exactly 12 digits'
                 })
-        
+
         return attrs
+
+    def _validate_worker_fields(self, attrs):
+        """Validate worker-specific required fields"""
+        required_fields = {
+            'main_category_id': 'Main category is required for workers',
+            'sub_category_ids': 'Subcategories are required for workers',
+            'years_experience': 'Years of experience is required for workers',
+            'skills': 'Skills description is required for workers'
+        }
+
+        for field, message in required_fields.items():
+            if not attrs.get(field):
+                raise serializers.ValidationError({field: message})
+
+        # Validate main category exists
+        main_category_id = attrs.get('main_category_id')
+        try:
+            main_category = WorkCategory.objects.get(category_code=main_category_id, is_active=True)
+            attrs['_main_category'] = main_category
+        except WorkCategory.DoesNotExist:
+            raise serializers.ValidationError({
+                'main_category_id': f'Invalid main category: {main_category_id}'
+            })
+
+        # Validate subcategories
+        sub_category_ids = attrs.get('sub_category_ids', [])
+        if sub_category_ids:
+            valid_subcategories = WorkSubCategory.objects.filter(
+                category=main_category,
+                subcategory_code__in=sub_category_ids,
+                is_active=True
+            )
+            found_codes = [sub.subcategory_code for sub in valid_subcategories]
+            invalid_codes = [code for code in sub_category_ids if code not in found_codes]
+            if invalid_codes:
+                raise serializers.ValidationError({
+                    'sub_category_ids': f'Invalid subcategories: {", ".join(invalid_codes)}'
+                })
+            attrs['_subcategories'] = valid_subcategories
+
+    def _validate_driver_fields(self, attrs):
+        """Validate driver-specific required fields"""
+        required_fields = {
+            'vehicle_types': 'Vehicle types are required for drivers',
+            'license_number': 'License number is required for drivers',
+            'vehicle_registration_number': 'Vehicle registration number is required for drivers',
+            'driving_years_experience': 'Driving experience years is required for drivers',
+            'driving_experience_description': 'Driving experience description is required for drivers'
+        }
+
+        for field, message in required_fields.items():
+            if not attrs.get(field):
+                raise serializers.ValidationError({field: message})
+
+    def _validate_property_fields(self, attrs):
+        """Validate property-specific required fields"""
+        required_fields = {
+            'property_types': 'Property types are required for property services',
+            'property_title': 'Property title is required for property services',
+            'property_description': 'Property description is required for property services'
+        }
+
+        for field, message in required_fields.items():
+            if not attrs.get(field):
+                raise serializers.ValidationError({field: message})
+
+    def _validate_sos_fields(self, attrs):
+        """Validate SOS/Emergency-specific required fields"""
+        required_fields = {
+            'emergency_service_types': 'Emergency service types are required for SOS services',
+            'contact_number': 'Contact number is required for SOS services',
+            'current_location': 'Current location is required for SOS services',
+            'emergency_description': 'Emergency description is required for SOS services'
+        }
+
+        for field, message in required_fields.items():
+            if not attrs.get(field):
+                raise serializers.ValidationError({field: message})
     
     @transaction.atomic
     def create(self, validated_data):
         """Create complete profile with all related data"""
         user = self.context['request'].user
         user_type = validated_data['user_type']
-        
-        # Extract nested data
+        service_type = validated_data.get('service_type')
+
+        # Extract data that needs special handling
         main_category = validated_data.pop('_main_category', None)
         subcategories = validated_data.pop('_subcategories', [])
         portfolio_images = validated_data.pop('portfolio_images', [])
-        
+
         # Create or update UserProfile
         profile, created = UserProfile.objects.update_or_create(
             user=user,
@@ -145,42 +244,100 @@ class ProfileSetupSerializer(serializers.Serializer):
                 'gender': validated_data['gender'],
                 'profile_photo': validated_data.get('profile_photo'),
                 'user_type': user_type,
-                'languages': validated_data.get('languages', ''),
-                'profile_complete': True,
-                'can_access_app': True
+                'service_type': service_type,
+                'languages': validated_data.get('languages', []),
+                'profile_complete': False,  # Will be updated after service data creation
+                'can_access_app': False
             }
         )
-        
-        # Handle provider-specific data
-        if user_type == 'provider' and main_category:
-            # Create UserWorkSelection
-            work_selection, _ = UserWorkSelection.objects.update_or_create(
-                user=profile,
-                defaults={
-                    'main_category': main_category,
-                    'years_experience': validated_data.get('years_experience', 0),
-                    'skills_description': validated_data.get('skills_description', '')
-                }
-            )
-            
-            # Clear existing subcategories and add new ones
-            UserWorkSubCategory.objects.filter(user_work_selection=work_selection).delete()
-            for subcategory in subcategories:
-                UserWorkSubCategory.objects.create(
-                    user_work_selection=work_selection,
-                    sub_category=subcategory
-                )
-            
-            # Handle portfolio images
-            WorkPortfolioImage.objects.filter(user_work_selection=work_selection).delete()
+
+        # Handle service-specific data for providers
+        if user_type == 'provider':
+            if service_type == 'worker':
+                self._create_worker_data(profile, validated_data, main_category, subcategories)
+            elif service_type == 'driver':
+                self._create_driver_data(profile, validated_data)
+            elif service_type == 'properties':
+                self._create_property_data(profile, validated_data)
+            elif service_type == 'SOS':
+                self._create_sos_data(profile, validated_data)
+
+            # Handle portfolio images for all provider types
+            ServicePortfolioImage.objects.filter(user_profile=profile).delete()
             for index, image in enumerate(portfolio_images, 1):
-                WorkPortfolioImage.objects.create(
-                    user_work_selection=work_selection,
+                ServicePortfolioImage.objects.create(
+                    user_profile=profile,
                     image=image,
                     image_order=index
                 )
-        
+
         # Handle verification data
+        self._handle_verification_data(profile, validated_data, service_type)
+
+        # Update profile completion status
+        profile.check_profile_completion()
+
+        return profile
+
+    def _create_worker_data(self, profile, validated_data, main_category, subcategories):
+        """Create worker-specific data"""
+        work_selection, _ = UserWorkSelection.objects.update_or_create(
+            user=profile,
+            defaults={
+                'main_category': main_category,
+                'years_experience': validated_data.get('years_experience', 0),
+                'skills_description': validated_data.get('skills', '')
+            }
+        )
+
+        # Clear existing subcategories and add new ones
+        UserWorkSubCategory.objects.filter(user_work_selection=work_selection).delete()
+        for subcategory in subcategories:
+            UserWorkSubCategory.objects.create(
+                user_work_selection=work_selection,
+                sub_category=subcategory
+            )
+
+    def _create_driver_data(self, profile, validated_data):
+        """Create driver-specific data"""
+        DriverServiceData.objects.update_or_create(
+            user_profile=profile,
+            defaults={
+                'vehicle_types': validated_data.get('vehicle_types', []),
+                'license_number': validated_data.get('license_number', ''),
+                'vehicle_registration_number': validated_data.get('vehicle_registration_number', ''),
+                'driving_years_experience': validated_data.get('driving_years_experience', 0),
+                'driving_experience_description': validated_data.get('driving_experience_description', '')
+            }
+        )
+
+    def _create_property_data(self, profile, validated_data):
+        """Create property-specific data"""
+        PropertyServiceData.objects.update_or_create(
+            user_profile=profile,
+            defaults={
+                'property_types': validated_data.get('property_types', []),
+                'property_title': validated_data.get('property_title', ''),
+                'parking_availability': validated_data.get('parking_availability'),
+                'furnishing_type': validated_data.get('furnishing_type'),
+                'property_description': validated_data.get('property_description', '')
+            }
+        )
+
+    def _create_sos_data(self, profile, validated_data):
+        """Create SOS/Emergency-specific data"""
+        SOSServiceData.objects.update_or_create(
+            user_profile=profile,
+            defaults={
+                'emergency_service_types': validated_data.get('emergency_service_types', []),
+                'contact_number': validated_data.get('contact_number', ''),
+                'current_location': validated_data.get('current_location', ''),
+                'emergency_description': validated_data.get('emergency_description', '')
+            }
+        )
+
+    def _handle_verification_data(self, profile, validated_data, service_type):
+        """Handle verification data creation"""
         aadhaar_number = validated_data.get('aadhaar_number')
         if aadhaar_number:
             AadhaarVerification.objects.update_or_create(
@@ -191,10 +348,10 @@ class ProfileSetupSerializer(serializers.Serializer):
                     'can_skip': True
                 }
             )
-        
+
         license_number = validated_data.get('license_number')
         if license_number:
-            is_driver = main_category and main_category.name == 'driver'
+            is_driver = service_type == 'driver'
             LicenseVerification.objects.update_or_create(
                 user=profile,
                 defaults={
@@ -204,56 +361,28 @@ class ProfileSetupSerializer(serializers.Serializer):
                     'is_required': is_driver
                 }
             )
-        
-        return profile
 
 
 class ProfileResponseSerializer(serializers.ModelSerializer):
     """Serializer for profile response data"""
-    main_category_id = serializers.SerializerMethodField()
-    sub_category_ids = serializers.SerializerMethodField()
     age = serializers.ReadOnlyField()
     mobile_number = serializers.ReadOnlyField()
-    skills = serializers.SerializerMethodField()
-    years_experience = serializers.SerializerMethodField()
     profile_photo = serializers.SerializerMethodField()
+    portfolio_images = serializers.SerializerMethodField()
+
+    # Service-specific data fields
+    service_data = serializers.SerializerMethodField()
 
     class Meta:
         model = UserProfile
         fields = [
-            'id', 'full_name', 'user_type', 'gender', 'date_of_birth', 'age',
+            'id', 'full_name', 'user_type', 'service_type', 'gender', 'date_of_birth', 'age',
             'profile_photo', 'profile_complete', 'can_access_app',
             'mobile_number', 'languages', 'provider_id',
-            'main_category_id', 'sub_category_ids', 'skills', 'years_experience',
+            'portfolio_images', 'service_data',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'age', 'mobile_number', 'provider_id', 'created_at', 'updated_at']
-
-    def get_main_category_id(self, obj):
-        """Get main category code for providers"""
-        if obj.user_type == 'provider' and hasattr(obj, 'work_selection') and obj.work_selection:
-            return obj.work_selection.main_category.category_code
-        return None
-
-    def get_sub_category_ids(self, obj):
-        """Get list of subcategory codes for providers"""
-        if obj.user_type == 'provider' and hasattr(obj, 'work_selection') and obj.work_selection:
-            subcategories = obj.work_selection.selected_subcategories.all()
-            return [sub.sub_category.subcategory_code for sub in subcategories]
-        return []
-
-    def get_skills(self, obj):
-        """Get subcategory names as skills for providers"""
-        if obj.user_type == 'provider' and hasattr(obj, 'work_selection') and obj.work_selection:
-            subcategories = obj.work_selection.selected_subcategories.all()
-            return [sub.sub_category.name for sub in subcategories]
-        return []
-
-    def get_years_experience(self, obj):
-        """Get years of experience for providers"""
-        if obj.user_type == 'provider' and hasattr(obj, 'work_selection') and obj.work_selection:
-            return obj.work_selection.years_experience
-        return None
 
     def get_profile_photo(self, obj):
         """Get full URL for profile photo"""
@@ -262,4 +391,87 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
             if request:
                 return request.build_absolute_uri(obj.profile_photo.url)
             return obj.profile_photo.url
+        return None
+
+    def get_portfolio_images(self, obj):
+        """Get portfolio images URLs"""
+        images = obj.service_portfolio_images.all().order_by('image_order')
+        request = self.context.get('request')
+
+        image_urls = []
+        for img in images:
+            if request:
+                image_urls.append(request.build_absolute_uri(img.image.url))
+            else:
+                image_urls.append(img.image.url)
+        return image_urls
+
+    def get_service_data(self, obj):
+        """Get service-specific data based on service type"""
+        if obj.user_type != 'provider' or not obj.service_type:
+            return None
+
+        if obj.service_type == 'worker':
+            return self._get_worker_data(obj)
+        elif obj.service_type == 'driver':
+            return self._get_driver_data(obj)
+        elif obj.service_type == 'properties':
+            return self._get_property_data(obj)
+        elif obj.service_type == 'SOS':
+            return self._get_sos_data(obj)
+
+        return None
+
+    def _get_worker_data(self, obj):
+        """Get worker-specific data"""
+        if hasattr(obj, 'work_selection') and obj.work_selection:
+            work_selection = obj.work_selection
+            subcategories = work_selection.selected_subcategories.all()
+
+            return {
+                'main_category_id': work_selection.main_category.category_code,
+                'main_category_name': work_selection.main_category.display_name,
+                'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories],
+                'sub_category_names': [sub.sub_category.display_name for sub in subcategories],
+                'years_experience': work_selection.years_experience,
+                'skills': work_selection.skills_description
+            }
+        return None
+
+    def _get_driver_data(self, obj):
+        """Get driver-specific data"""
+        if hasattr(obj, 'driver_service') and obj.driver_service:
+            driver_data = obj.driver_service
+            return {
+                'vehicle_types': driver_data.vehicle_types,
+                'license_number': driver_data.license_number,
+                'vehicle_registration_number': driver_data.vehicle_registration_number,
+                'driving_years_experience': driver_data.driving_years_experience,
+                'driving_experience_description': driver_data.driving_experience_description
+            }
+        return None
+
+    def _get_property_data(self, obj):
+        """Get property-specific data"""
+        if hasattr(obj, 'property_service') and obj.property_service:
+            property_data = obj.property_service
+            return {
+                'property_types': property_data.property_types,
+                'property_title': property_data.property_title,
+                'parking_availability': property_data.parking_availability,
+                'furnishing_type': property_data.furnishing_type,
+                'property_description': property_data.property_description
+            }
+        return None
+
+    def _get_sos_data(self, obj):
+        """Get SOS/Emergency-specific data"""
+        if hasattr(obj, 'sos_service') and obj.sos_service:
+            sos_data = obj.sos_service
+            return {
+                'emergency_service_types': sos_data.emergency_service_types,
+                'contact_number': sos_data.contact_number,
+                'current_location': sos_data.current_location,
+                'emergency_description': sos_data.emergency_description
+            }
         return None
