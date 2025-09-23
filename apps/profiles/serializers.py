@@ -129,11 +129,17 @@ class ProfileSetupSerializer(serializers.Serializer):
             if service_type == 'worker':
                 self._validate_worker_fields(attrs)
             elif service_type == 'driver':
-                self._validate_driver_fields(attrs)
+                # Drivers need both category fields AND driver-specific fields
+                self._validate_worker_fields(attrs)  # Validate main_category_id and sub_category_ids
+                self._validate_driver_fields(attrs)  # Validate driver-specific fields
             elif service_type == 'properties':
-                self._validate_property_fields(attrs)
+                # Properties need both category fields AND property-specific fields
+                self._validate_worker_fields(attrs)  # Validate main_category_id and sub_category_ids
+                self._validate_property_fields(attrs)  # Validate property-specific fields
             elif service_type == 'SOS':
-                self._validate_sos_fields(attrs)
+                # SOS need both category fields AND SOS-specific fields
+                self._validate_worker_fields(attrs)  # Validate main_category_id and sub_category_ids
+                self._validate_sos_fields(attrs)  # Validate SOS-specific fields
 
         # Aadhaar validation
         aadhaar_number = attrs.get('aadhaar_number')
@@ -286,10 +292,16 @@ class ProfileSetupSerializer(serializers.Serializer):
             if service_type == 'worker':
                 self._create_worker_data(profile, validated_data, main_category, subcategories)
             elif service_type == 'driver':
+                # Drivers need both category data AND driver-specific data
+                self._create_worker_data(profile, validated_data, main_category, subcategories)
                 self._create_driver_data(profile, validated_data)
             elif service_type == 'properties':
+                # Properties need both category data AND property-specific data
+                self._create_worker_data(profile, validated_data, main_category, subcategories)
                 self._create_property_data(profile, validated_data)
             elif service_type == 'SOS':
+                # SOS need both category data AND SOS-specific data
+                self._create_worker_data(profile, validated_data, main_category, subcategories)
                 self._create_sos_data(profile, validated_data)
 
             # Handle portfolio images for all provider types
