@@ -92,6 +92,11 @@ def profile_setup_api(request, version=None):
         except UserProfile.DoesNotExist:
             pass  # No existing profile, continue with setup
         
+        # Debug logging
+        print(f"PROFILE SETUP API CALLED")
+        print(f"Request data keys: {list(request.data.keys())}")
+        print(f"User: {request.user.mobile_number}")
+
         # Validate and process data
         serializer = ProfileSetupSerializer(data=request.data, context={'request': request})
         

@@ -13,7 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY', default="django-insecure-%9b_e2pl+ah^rm7ljs4u9hudg$$rh^(qd7q(3z+&a^3u*ohm!g")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = True  # Temporarily force debug mode
 
 ALLOWED_HOSTS = ['api.visibleapp.in','workflow-z7zt.onrender.com', 'localhost', '127.0.0.1', '143.110.178.190']
 
