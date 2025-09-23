@@ -177,7 +177,9 @@ class ProfileSetupSerializer(serializers.Serializer):
         }
 
         for field, message in required_fields.items():
-            if not attrs.get(field):
+            value = attrs.get(field)
+            # Check for None, empty string, or empty list
+            if not value or (isinstance(value, list) and len(value) == 0):
                 raise serializers.ValidationError({field: message})
 
         # Validate main category exists
