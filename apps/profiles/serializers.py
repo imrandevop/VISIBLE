@@ -147,6 +147,28 @@ class ProfileSetupSerializer(serializers.Serializer):
 
     def _validate_worker_fields(self, attrs):
         """Validate worker-specific required fields"""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # Debug logging
+        print(f"DEBUG: sub_category_ids received: {attrs.get('sub_category_ids')} (type: {type(attrs.get('sub_category_ids'))})")
+
         required_fields = {
             'main_category_id': 'Main category is required for workers',
             'sub_category_ids': 'Subcategories are required for workers',
@@ -170,6 +192,8 @@ class ProfileSetupSerializer(serializers.Serializer):
 
         # Validate subcategories
         sub_category_ids = attrs.get('sub_category_ids', [])
+        print(f"DEBUG: About to validate subcategories: {sub_category_ids} (type: {type(sub_category_ids)})")
+
         if sub_category_ids:
             valid_subcategories = WorkSubCategory.objects.filter(
                 category=main_category,
@@ -177,7 +201,11 @@ class ProfileSetupSerializer(serializers.Serializer):
                 is_active=True
             )
             found_codes = [sub.subcategory_code for sub in valid_subcategories]
+            print(f"DEBUG: Found subcategories in DB: {found_codes}")
+
             invalid_codes = [code for code in sub_category_ids if code not in found_codes]
+            print(f"DEBUG: Invalid codes: {invalid_codes}")
+
             if invalid_codes:
                 raise serializers.ValidationError({
                     'sub_category_ids': f'Invalid subcategories: {", ".join(invalid_codes)}'
