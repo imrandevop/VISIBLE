@@ -7,6 +7,9 @@ import random
 import string
 from datetime import date
 
+def default_list():
+    return []
+
 class UserProfile(BaseModel):
     GENDER_CHOICES = [
         ('male', 'Male'),
@@ -44,7 +47,7 @@ class UserProfile(BaseModel):
     )
     user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, null=True, blank=True)
     service_type = models.CharField(max_length=15, choices=SERVICE_TYPE_CHOICES, null=True, blank=True, help_text="Service type for providers")
-    languages = models.JSONField(default=list, blank=True, help_text="Languages spoken by the user as array")
+    languages = models.TextField(blank=True, null=True, help_text="Languages spoken by the user as comma-separated")
     provider_id = models.CharField(max_length=10, unique=True, blank=True, null=True, help_text="Unique provider ID (2 letters + 8 digits)")
     profile_complete = models.BooleanField(default=False)
     can_access_app = models.BooleanField(default=False)
@@ -174,7 +177,7 @@ class DriverServiceData(BaseModel):
         on_delete=models.CASCADE,
         related_name='driver_service'
     )
-    vehicle_types = models.JSONField(default=list, help_text="Array of vehicle types")
+    vehicle_types = models.TextField(blank=True, null=True, help_text="Vehicle types as comma-separated")
     license_number = models.CharField(max_length=50)
     vehicle_registration_number = models.CharField(max_length=20)
     driving_years_experience = models.IntegerField()
@@ -203,7 +206,7 @@ class PropertyServiceData(BaseModel):
         on_delete=models.CASCADE,
         related_name='property_service'
     )
-    property_types = models.JSONField(default=list, help_text="Array of property types")
+    property_types = models.TextField(blank=True, null=True, help_text="Property types as comma-separated")
     property_title = models.CharField(max_length=200)
     parking_availability = models.CharField(max_length=20, choices=PARKING_CHOICES, null=True, blank=True)
     furnishing_type = models.CharField(max_length=20, choices=FURNISHING_CHOICES, null=True, blank=True)
@@ -220,7 +223,7 @@ class SOSServiceData(BaseModel):
         on_delete=models.CASCADE,
         related_name='sos_service'
     )
-    emergency_service_types = models.JSONField(default=list, help_text="Array of emergency service types")
+    emergency_service_types = models.TextField(blank=True, null=True, help_text="Emergency service types as comma-separated")
     contact_number = models.CharField(max_length=15)
     current_location = models.TextField()
     emergency_description = models.TextField()

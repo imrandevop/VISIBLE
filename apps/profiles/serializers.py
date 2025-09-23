@@ -245,7 +245,7 @@ class ProfileSetupSerializer(serializers.Serializer):
                 'profile_photo': validated_data.get('profile_photo'),
                 'user_type': user_type,
                 'service_type': service_type,
-                'languages': validated_data.get('languages', []),
+                'languages': ','.join(validated_data.get('languages', [])),
                 'profile_complete': False,  # Will be updated after service data creation
                 'can_access_app': False
             }
@@ -303,7 +303,7 @@ class ProfileSetupSerializer(serializers.Serializer):
         DriverServiceData.objects.update_or_create(
             user_profile=profile,
             defaults={
-                'vehicle_types': validated_data.get('vehicle_types', []),
+                'vehicle_types': ','.join(validated_data.get('vehicle_types', [])),
                 'license_number': validated_data.get('license_number', ''),
                 'vehicle_registration_number': validated_data.get('vehicle_registration_number', ''),
                 'driving_years_experience': validated_data.get('driving_years_experience', 0),
@@ -316,7 +316,7 @@ class ProfileSetupSerializer(serializers.Serializer):
         PropertyServiceData.objects.update_or_create(
             user_profile=profile,
             defaults={
-                'property_types': validated_data.get('property_types', []),
+                'property_types': ','.join(validated_data.get('property_types', [])),
                 'property_title': validated_data.get('property_title', ''),
                 'parking_availability': validated_data.get('parking_availability'),
                 'furnishing_type': validated_data.get('furnishing_type'),
@@ -329,7 +329,7 @@ class ProfileSetupSerializer(serializers.Serializer):
         SOSServiceData.objects.update_or_create(
             user_profile=profile,
             defaults={
-                'emergency_service_types': validated_data.get('emergency_service_types', []),
+                'emergency_service_types': ','.join(validated_data.get('emergency_service_types', [])),
                 'contact_number': validated_data.get('contact_number', ''),
                 'current_location': validated_data.get('current_location', ''),
                 'emergency_description': validated_data.get('emergency_description', '')
@@ -373,6 +373,9 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
     # Service-specific data fields
     service_data = serializers.SerializerMethodField()
 
+    # Add languages as method field
+    languages = serializers.SerializerMethodField()
+
     class Meta:
         model = UserProfile
         fields = [
@@ -383,6 +386,12 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'age', 'mobile_number', 'provider_id', 'created_at', 'updated_at']
+
+    def get_languages(self, obj):
+        """Convert comma-separated languages to array"""
+        if obj.languages:
+            return [lang.strip() for lang in obj.languages.split(',') if lang.strip()]
+        return []
 
     def get_profile_photo(self, obj):
         """Get full URL for profile photo"""
@@ -443,7 +452,7 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
         if hasattr(obj, 'driver_service') and obj.driver_service:
             driver_data = obj.driver_service
             return {
-                'vehicle_types': driver_data.vehicle_types,
+                'vehicle_types': driver_data.vehicle_types.split(',') if driver_data.vehicle_types else [],
                 'license_number': driver_data.license_number,
                 'vehicle_registration_number': driver_data.vehicle_registration_number,
                 'driving_years_experience': driver_data.driving_years_experience,
@@ -456,7 +465,7 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
         if hasattr(obj, 'property_service') and obj.property_service:
             property_data = obj.property_service
             return {
-                'property_types': property_data.property_types,
+                'property_types': property_data.property_types.split(',') if property_data.property_types else [],
                 'property_title': property_data.property_title,
                 'parking_availability': property_data.parking_availability,
                 'furnishing_type': property_data.furnishing_type,
@@ -469,7 +478,7 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
         if hasattr(obj, 'sos_service') and obj.sos_service:
             sos_data = obj.sos_service
             return {
-                'emergency_service_types': sos_data.emergency_service_types,
+                'emergency_service_types': sos_data.emergency_service_types.split(',') if sos_data.emergency_service_types else [],
                 'contact_number': sos_data.contact_number,
                 'current_location': sos_data.current_location,
                 'emergency_description': sos_data.emergency_description
