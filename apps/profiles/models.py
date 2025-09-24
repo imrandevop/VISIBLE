@@ -252,6 +252,11 @@ class ServicePortfolioImage(BaseModel):
         unique_together = ['user_profile', 'image_order']
         ordering = ['image_order']
 
+    @property
+    def user(self):
+        """Provide user property for compatibility"""
+        return self.user_profile
+
     def __str__(self):
         return f"{self.user_profile.full_name} - Portfolio Image {self.image_order}"
 

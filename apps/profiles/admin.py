@@ -4,7 +4,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 from django import forms
-from apps.profiles.models import UserProfile
+from apps.profiles.models import UserProfile, ServicePortfolioImage
 from apps.authentication.models import User
 
 
@@ -160,3 +160,46 @@ class UserProfileAdmin(admin.ModelAdmin):
                 updated_count += 1
         self.message_user(request, f"Refreshed completion status. {updated_count} profiles updated.")
     refresh_completion_status.short_description = "Refresh profile completion status"
+
+
+@admin.register(ServicePortfolioImage)
+class ServicePortfolioImageAdmin(admin.ModelAdmin):
+    list_display = [
+        'user_profile_name',
+        'mobile_number',
+        'image_order',
+        'image_preview',
+        'created_at'
+    ]
+
+    list_filter = [
+        'image_order',
+        'created_at',
+        'user_profile__user_type'
+    ]
+
+    search_fields = [
+        'user_profile__full_name',
+        'user_profile__user__mobile_number'
+    ]
+
+    readonly_fields = ['image_preview', 'created_at', 'updated_at']
+
+    def user_profile_name(self, obj):
+        return obj.user_profile.full_name
+    user_profile_name.short_description = 'User Name'
+    user_profile_name.admin_order_field = 'user_profile__full_name'
+
+    def mobile_number(self, obj):
+        return obj.user_profile.user.mobile_number
+    mobile_number.short_description = 'Mobile'
+    mobile_number.admin_order_field = 'user_profile__user__mobile_number'
+
+    def image_preview(self, obj):
+        if obj.image:
+            return format_html(
+                '<img src="{}" style="width: 100px; height: 100px; object-fit: cover;" />',
+                obj.image.url
+            )
+        return "No Image"
+    image_preview.short_description = 'Image Preview'
