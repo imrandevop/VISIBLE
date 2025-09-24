@@ -163,7 +163,6 @@ REST_FRAMEWORK = {
 
 #!<------------------JWT Settings------------------>
 
-from rest_framework_simplejwt.settings import api_settings
 from datetime import timedelta
 
 SIMPLE_JWT = {
