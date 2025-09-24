@@ -86,7 +86,7 @@ class UserWorkSelection(BaseModel):
         related_name='user_selections'
     )
     years_experience = models.IntegerField()
-    skills_description = models.TextField()
+    skills = models.TextField()
     
     def __str__(self):
         return f"{self.user.full_name} - {self.main_category.display_name}"

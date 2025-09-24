@@ -180,7 +180,7 @@ class DriverServiceData(BaseModel):
     vehicle_types = models.TextField(blank=True, null=True, help_text="Vehicle types as comma-separated")
     license_number = models.CharField(max_length=50)
     vehicle_registration_number = models.CharField(max_length=20)
-    driving_years_experience = models.IntegerField()
+    years_experience = models.IntegerField()
     driving_experience_description = models.TextField()
 
     def __str__(self):

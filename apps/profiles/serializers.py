@@ -65,7 +65,6 @@ class ProfileSetupSerializer(serializers.Serializer):
     )
     license_number = serializers.CharField(required=False, allow_blank=True, max_length=50)
     vehicle_registration_number = serializers.CharField(required=False, allow_blank=True, max_length=20)
-    driving_years_experience = serializers.IntegerField(required=False, allow_null=True, min_value=0)
     driving_experience_description = serializers.CharField(required=False, allow_blank=True)
 
     # Property-specific Fields
@@ -125,21 +124,18 @@ class ProfileSetupSerializer(serializers.Serializer):
                     'portfolio_images': 'At least one portfolio image is required for all providers'
                 })
 
+            # All provider types need category validation
+            self._validate_category_fields(attrs)
+
             # Service-specific validation
             if service_type == 'worker':
                 self._validate_worker_fields(attrs)
             elif service_type == 'driver':
-                # Drivers need both category fields AND driver-specific fields
-                self._validate_worker_fields(attrs)  # Validate main_category_id and sub_category_ids
-                self._validate_driver_fields(attrs)  # Validate driver-specific fields
+                self._validate_driver_fields(attrs)
             elif service_type == 'properties':
-                # Properties need both category fields AND property-specific fields
-                self._validate_worker_fields(attrs)  # Validate main_category_id and sub_category_ids
-                self._validate_property_fields(attrs)  # Validate property-specific fields
+                self._validate_property_fields(attrs)
             elif service_type == 'SOS':
-                # SOS need both category fields AND SOS-specific fields
-                self._validate_worker_fields(attrs)  # Validate main_category_id and sub_category_ids
-                self._validate_sos_fields(attrs)  # Validate SOS-specific fields
+                self._validate_sos_fields(attrs)
 
         # Aadhaar validation
         aadhaar_number = attrs.get('aadhaar_number')
@@ -150,6 +146,46 @@ class ProfileSetupSerializer(serializers.Serializer):
                 })
 
         return attrs
+
+    def _validate_category_fields(self, attrs):
+        """Validate category fields required for all provider types"""
+        required_fields = {
+            'main_category_id': 'Main category is required for all providers',
+            'sub_category_ids': 'Subcategories are required for all providers'
+        }
+
+        for field, message in required_fields.items():
+            value = attrs.get(field)
+            # Check for None, empty string, or empty list
+            if not value or (isinstance(value, list) and len(value) == 0):
+                raise serializers.ValidationError({field: message})
+
+        # Validate main category exists
+        main_category_id = attrs.get('main_category_id')
+        try:
+            main_category = WorkCategory.objects.get(category_code=main_category_id, is_active=True)
+            attrs['_main_category'] = main_category
+        except WorkCategory.DoesNotExist:
+            raise serializers.ValidationError({
+                'main_category_id': f'Invalid main category: {main_category_id}'
+            })
+
+        # Validate subcategories
+        sub_category_ids = attrs.get('sub_category_ids', [])
+        if sub_category_ids:
+            valid_subcategories = WorkSubCategory.objects.filter(
+                category=main_category,
+                subcategory_code__in=sub_category_ids,
+                is_active=True
+            )
+            found_codes = [sub.subcategory_code for sub in valid_subcategories]
+            invalid_codes = [code for code in sub_category_ids if code not in found_codes]
+
+            if invalid_codes:
+                raise serializers.ValidationError({
+                    'sub_category_ids': f'Invalid subcategories: {", ".join(invalid_codes)}'
+                })
+            attrs['_subcategories'] = valid_subcategories
 
     def _validate_worker_fields(self, attrs):
         """Validate worker-specific required fields"""
@@ -172,53 +208,15 @@ class ProfileSetupSerializer(serializers.Serializer):
 
 
 
-        # Debug logging
-        print(f"DEBUG: sub_category_ids received: {attrs.get('sub_category_ids')} (type: {type(attrs.get('sub_category_ids'))})")
-
         required_fields = {
-            'main_category_id': 'Main category is required for workers',
-            'sub_category_ids': 'Subcategories are required for workers',
             'years_experience': 'Years of experience is required for workers',
             'skills': 'Skills description is required for workers'
         }
 
         for field, message in required_fields.items():
             value = attrs.get(field)
-            # Check for None, empty string, or empty list
-            if not value or (isinstance(value, list) and len(value) == 0):
+            if not value:
                 raise serializers.ValidationError({field: message})
-
-        # Validate main category exists
-        main_category_id = attrs.get('main_category_id')
-        try:
-            main_category = WorkCategory.objects.get(category_code=main_category_id, is_active=True)
-            attrs['_main_category'] = main_category
-        except WorkCategory.DoesNotExist:
-            raise serializers.ValidationError({
-                'main_category_id': f'Invalid main category: {main_category_id}'
-            })
-
-        # Validate subcategories
-        sub_category_ids = attrs.get('sub_category_ids', [])
-        print(f"DEBUG: About to validate subcategories: {sub_category_ids} (type: {type(sub_category_ids)})")
-
-        if sub_category_ids:
-            valid_subcategories = WorkSubCategory.objects.filter(
-                category=main_category,
-                subcategory_code__in=sub_category_ids,
-                is_active=True
-            )
-            found_codes = [sub.subcategory_code for sub in valid_subcategories]
-            print(f"DEBUG: Found subcategories in DB: {found_codes}")
-
-            invalid_codes = [code for code in sub_category_ids if code not in found_codes]
-            print(f"DEBUG: Invalid codes: {invalid_codes}")
-
-            if invalid_codes:
-                raise serializers.ValidationError({
-                    'sub_category_ids': f'Invalid subcategories: {", ".join(invalid_codes)}'
-                })
-            attrs['_subcategories'] = valid_subcategories
 
     def _validate_driver_fields(self, attrs):
         """Validate driver-specific required fields"""
@@ -226,7 +224,7 @@ class ProfileSetupSerializer(serializers.Serializer):
             'vehicle_types': 'Vehicle types are required for drivers',
             'license_number': 'License number is required for drivers',
             'vehicle_registration_number': 'Vehicle registration number is required for drivers',
-            'driving_years_experience': 'Driving experience years is required for drivers',
+            'years_experience': 'Years of experience is required for drivers',
             'driving_experience_description': 'Driving experience description is required for drivers'
         }
 
@@ -289,19 +287,15 @@ class ProfileSetupSerializer(serializers.Serializer):
 
         # Handle service-specific data for providers
         if user_type == 'provider':
-            if service_type == 'worker':
-                self._create_worker_data(profile, validated_data, main_category, subcategories)
-            elif service_type == 'driver':
-                # Drivers need both category data AND driver-specific data
-                self._create_worker_data(profile, validated_data, main_category, subcategories)
+            # All providers need work selection data
+            self._create_worker_data(profile, validated_data, main_category, subcategories)
+
+            # Create service-specific data
+            if service_type == 'driver':
                 self._create_driver_data(profile, validated_data)
             elif service_type == 'properties':
-                # Properties need both category data AND property-specific data
-                self._create_worker_data(profile, validated_data, main_category, subcategories)
                 self._create_property_data(profile, validated_data)
             elif service_type == 'SOS':
-                # SOS need both category data AND SOS-specific data
-                self._create_worker_data(profile, validated_data, main_category, subcategories)
                 self._create_sos_data(profile, validated_data)
 
             # Handle portfolio images for all provider types
@@ -328,7 +322,7 @@ class ProfileSetupSerializer(serializers.Serializer):
             defaults={
                 'main_category': main_category,
                 'years_experience': validated_data.get('years_experience', 0),
-                'skills_description': validated_data.get('skills', '')
+                'skills': validated_data.get('skills', '')
             }
         )
 
@@ -348,7 +342,7 @@ class ProfileSetupSerializer(serializers.Serializer):
                 'vehicle_types': ','.join(validated_data.get('vehicle_types', [])),
                 'license_number': validated_data.get('license_number', ''),
                 'vehicle_registration_number': validated_data.get('vehicle_registration_number', ''),
-                'driving_years_experience': validated_data.get('driving_years_experience', 0),
+                'years_experience': validated_data.get('years_experience', 0),
                 'driving_experience_description': validated_data.get('driving_experience_description', '')
             }
         )
@@ -485,44 +479,88 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
                 'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories],
                 'sub_category_names': [sub.sub_category.display_name for sub in subcategories],
                 'years_experience': work_selection.years_experience,
-                'skills': work_selection.skills_description
+                'skills': work_selection.skills
             }
         return None
 
     def _get_driver_data(self, obj):
-        """Get driver-specific data"""
+        """Get driver-specific data including category data"""
+        data = {}
+
+        # Get category data from work selection
+        if hasattr(obj, 'work_selection') and obj.work_selection:
+            work_selection = obj.work_selection
+            subcategories = work_selection.selected_subcategories.all()
+            data.update({
+                'main_category_id': work_selection.main_category.category_code,
+                'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories],
+                'years_experience': work_selection.years_experience,
+                'skills': work_selection.skills
+            })
+
+        # Get driver-specific data
         if hasattr(obj, 'driver_service') and obj.driver_service:
             driver_data = obj.driver_service
-            return {
+            data.update({
                 'vehicle_types': driver_data.vehicle_types.split(',') if driver_data.vehicle_types else [],
                 'license_number': driver_data.license_number,
                 'vehicle_registration_number': driver_data.vehicle_registration_number,
-                'driving_years_experience': driver_data.driving_years_experience,
                 'driving_experience_description': driver_data.driving_experience_description
-            }
-        return None
+            })
+
+        return data if data else None
 
     def _get_property_data(self, obj):
-        """Get property-specific data"""
+        """Get property-specific data including category data"""
+        data = {}
+
+        # Get category data from work selection
+        if hasattr(obj, 'work_selection') and obj.work_selection:
+            work_selection = obj.work_selection
+            subcategories = work_selection.selected_subcategories.all()
+            data.update({
+                'main_category_id': work_selection.main_category.category_code,
+                'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories],
+                'years_experience': work_selection.years_experience,
+                'skills': work_selection.skills
+            })
+
+        # Get property-specific data
         if hasattr(obj, 'property_service') and obj.property_service:
             property_data = obj.property_service
-            return {
+            data.update({
                 'property_types': property_data.property_types.split(',') if property_data.property_types else [],
                 'property_title': property_data.property_title,
                 'parking_availability': property_data.parking_availability,
                 'furnishing_type': property_data.furnishing_type,
                 'property_description': property_data.property_description
-            }
-        return None
+            })
+
+        return data if data else None
 
     def _get_sos_data(self, obj):
-        """Get SOS/Emergency-specific data"""
+        """Get SOS/Emergency-specific data including category data"""
+        data = {}
+
+        # Get category data from work selection
+        if hasattr(obj, 'work_selection') and obj.work_selection:
+            work_selection = obj.work_selection
+            subcategories = work_selection.selected_subcategories.all()
+            data.update({
+                'main_category_id': work_selection.main_category.category_code,
+                'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories],
+                'years_experience': work_selection.years_experience,
+                'skills': work_selection.skills
+            })
+
+        # Get SOS-specific data
         if hasattr(obj, 'sos_service') and obj.sos_service:
             sos_data = obj.sos_service
-            return {
+            data.update({
                 'emergency_service_types': sos_data.emergency_service_types.split(',') if sos_data.emergency_service_types else [],
                 'contact_number': sos_data.contact_number,
                 'current_location': sos_data.current_location,
                 'emergency_description': sos_data.emergency_description
-            }
-        return None
+            })
+
+        return data if data else None
