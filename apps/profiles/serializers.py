@@ -75,14 +75,16 @@ class ProfileSetupSerializer(serializers.Serializer):
     )
     property_title = serializers.CharField(required=False, allow_blank=True, max_length=200)
     parking_availability = serializers.ChoiceField(
-        choices=['available', 'not_available', 'street_parking'],
+        choices=['Yes', 'No'],
         required=False,
-        allow_blank=True
+        allow_blank=True,
+        allow_null=True
     )
     furnishing_type = serializers.ChoiceField(
-        choices=['furnished', 'semi_furnished', 'unfurnished'],
+        choices=['Fully Furnished', 'Semi Furnished', 'Unfurnished'],
         required=False,
-        allow_blank=True
+        allow_blank=True,
+        allow_null=True
     )
     property_description = serializers.CharField(required=False, allow_blank=True)
 

@@ -190,15 +190,14 @@ class DriverServiceData(BaseModel):
 class PropertyServiceData(BaseModel):
     """Property-specific service data"""
     PARKING_CHOICES = [
-        ('available', 'Available'),
-        ('not_available', 'Not Available'),
-        ('street_parking', 'Street Parking'),
+        ('Yes', 'Yes'),
+        ('No', 'No'),
     ]
 
     FURNISHING_CHOICES = [
-        ('furnished', 'Furnished'),
-        ('semi_furnished', 'Semi Furnished'),
-        ('unfurnished', 'Unfurnished'),
+        ('Fully Furnished', 'Fully Furnished'),
+        ('Semi Furnished', 'Semi Furnished'),
+        ('Unfurnished', 'Unfurnished'),
     ]
 
     user_profile = models.OneToOneField(
