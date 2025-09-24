@@ -108,12 +108,6 @@ class ProfileSetupSerializer(serializers.Serializer):
     
     def validate(self, attrs):
         """Custom validation for business rules"""
-        # Debug: Print all received data
-        print(f"DEBUG: ProfileSetupSerializer.validate() called")
-        print(f"DEBUG: Received attrs keys: {list(attrs.keys())}")
-        print(f"DEBUG: sub_category_ids type: {type(attrs.get('sub_category_ids'))}")
-        print(f"DEBUG: sub_category_ids value: {attrs.get('sub_category_ids')}")
-
         user_type = attrs.get('user_type')
         service_type = attrs.get('service_type')
 
@@ -181,26 +175,12 @@ class ProfileSetupSerializer(serializers.Serializer):
         # Validate subcategories
         sub_category_ids = attrs.get('sub_category_ids', [])
         if sub_category_ids:
-            # Debug logging
-            print(f"DEBUG: Validating subcategories: {sub_category_ids}")
-            print(f"DEBUG: Main category: {main_category.category_code} - {main_category.display_name}")
-
             valid_subcategories = WorkSubCategory.objects.filter(
                 category=main_category,
                 subcategory_code__in=sub_category_ids,
                 is_active=True
             )
             found_codes = [sub.subcategory_code for sub in valid_subcategories]
-
-            # Debug: Check if subcategories exist but in wrong category
-            all_matching_subs = WorkSubCategory.objects.filter(
-                subcategory_code__in=sub_category_ids,
-                is_active=True
-            )
-            print(f"DEBUG: Found subcategories in any category:")
-            for sub in all_matching_subs:
-                print(f"  {sub.subcategory_code}: {sub.display_name} (Category: {sub.category.category_code})")
-
             invalid_codes = [code for code in sub_category_ids if code not in found_codes]
 
             if invalid_codes:

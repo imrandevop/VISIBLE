@@ -96,8 +96,6 @@ def profile_setup_api(request, version=None):
         print(f"PROFILE SETUP API CALLED")
         print(f"Request data keys: {list(request.data.keys())}")
         print(f"User: {request.user.mobile_number}")
-        print(f"DEBUG: sub_category_ids in request: {request.data.get('sub_category_ids')}")
-        print(f"DEBUG: sub_category_ids type: {type(request.data.get('sub_category_ids'))}")
 
         # Validate and process data
         serializer = ProfileSetupSerializer(data=request.data, context={'request': request})
