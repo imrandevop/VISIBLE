@@ -108,6 +108,12 @@ class ProfileSetupSerializer(serializers.Serializer):
     
     def validate(self, attrs):
         """Custom validation for business rules"""
+        # Debug: Print all received data
+        print(f"DEBUG: ProfileSetupSerializer.validate() called")
+        print(f"DEBUG: Received attrs keys: {list(attrs.keys())}")
+        print(f"DEBUG: sub_category_ids type: {type(attrs.get('sub_category_ids'))}")
+        print(f"DEBUG: sub_category_ids value: {attrs.get('sub_category_ids')}")
+
         user_type = attrs.get('user_type')
         service_type = attrs.get('service_type')
 
