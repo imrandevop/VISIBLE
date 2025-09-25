@@ -31,14 +31,16 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    'channels',
     'rest_framework',
     'rest_framework_simplejwt',
-    
+
     "apps.authentication",
     "apps.core",
     "apps.profiles",
     "apps.work_categories",
     "apps.verification",
+    "apps.location_services",
 
 ]
 
@@ -206,3 +208,33 @@ SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=False, cast=bool
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
+
+#!<------------------ Django Channels Configuration ------------------>
+
+# ASGI application
+ASGI_APPLICATION = 'VISIBLE.asgi.application'
+
+# Channel layer settings
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [config('REDIS_URL', default='redis://127.0.0.1:6379')],
+        },
+    },
+}
+
+# Production Redis configuration
+# For production, use Redis. For development without Redis, fall back to in-memory
+try:
+    import redis
+    # Test Redis connection
+    r = redis.Redis.from_url(config('REDIS_URL', default='redis://127.0.0.1:6379'))
+    r.ping()
+except (redis.ConnectionError, redis.ResponseError, ImportError):
+    # Fallback to in-memory channel layer if Redis is not available
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer'
+        }
+    }

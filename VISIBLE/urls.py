@@ -12,10 +12,11 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', RedirectView.as_view(url='/admin/', permanent=True)),
     
-    # Simple test endpoint
+    # API endpoints
     path('api/1/', include('apps.authentication.urls')),
     path('api/1/profiles/', include('apps.profiles.urls')),
     path('api/1/work-categories/', include('apps.work_categories.urls')),
+    path('api/1/location/', include('apps.location_services.urls')),
 ]
 
 # Serve media files in development
