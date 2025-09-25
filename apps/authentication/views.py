@@ -25,7 +25,7 @@ def send_otp_api(request, version=None):
     API endpoint to send OTP to mobile number
     This same endpoint works for both initial send and resend
     
-    POST /api/v1/send-otp/
+    POST /api/1/send-otp/
     Body: {"mobile_number": "9876543210"}
     
     Response: {
@@ -71,7 +71,7 @@ def verify_otp_api(request, version=None):
     """
     API endpoint to verify OTP and create user with JWT token
     
-    POST /api/v1/verify-otp/
+    POST /api/1/verify-otp/
     Body: {"mobile_number": "9876543210", "otp": "123456"}
     
     Response: {
@@ -159,7 +159,7 @@ def refresh_token_api(request, version=None):
     """
     API endpoint to refresh access token using refresh token
     
-    POST /api/v1/refresh-token/
+    POST /api/1/refresh-token/
     Body: {"refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGci..."}
     
     Response: {

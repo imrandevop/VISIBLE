@@ -15,7 +15,7 @@ def profile_setup_api(request, version=None):
     """
     Complete profile setup API - handles everything in one call
     
-    POST /api/v1/profiles/setup/
+    POST /api/1/profiles/setup/
     
     Headers:
         Authorization: Bearer <jwt_token>
@@ -147,7 +147,7 @@ def get_profile_api(request, version=None):
     """
     Get current user's profile data
     
-    GET /api/v1/profiles/me/
+    GET /api/1/profiles/me/
     
     Headers:
         Authorization: Bearer <jwt_token>
@@ -206,7 +206,7 @@ def check_profile_status_api(request, version=None):
     """
     Check if user's profile is complete and can access app
     
-    GET /api/v1/profiles/status/
+    GET /api/1/profiles/status/
     
     Headers:
         Authorization: Bearer <jwt_token>

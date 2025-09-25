@@ -14,7 +14,7 @@ def list_work_categories_api(request, version=None):
     """
     Get all active work categories with their subcategories
     
-    GET /api/v1/work-categories/
+    GET /api/1/work-categories/
     
     Headers:
         Authorization: Bearer <jwt_token>
@@ -87,7 +87,7 @@ def request_service_api(request, version=None):
     """
     API endpoint for users to request services not available in categories
 
-    POST /api/v1/work-categories/request-service/
+    POST /api/1/work-categories/request-service/
 
     Headers:
         Authorization: Bearer <jwt_token>

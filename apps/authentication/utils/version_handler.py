@@ -10,12 +10,12 @@ class APIVersionHandler:
         """
         Format send OTP response based on API version
         """
-        if version == 'v1':
+        if version == '1':
             return result
-        elif version == 'v2':
+        elif version == '2':
             # Future v2 might include additional fields
             response = result.copy()
-            response['api_version'] = 'v2'
+            response['api_version'] = '2'
             response['timestamp'] = '2024-08-13T10:30:00Z'
             return response
         else:
@@ -26,12 +26,12 @@ class APIVersionHandler:
         """
         Format verify OTP response based on API version
         """
-        if version == 'v1':
+        if version == '1':
             return jwt_response
-        elif version == 'v2':
+        elif version == '2':
             # Future v2 might have different response structure
             response = jwt_response.copy()
-            response['api_version'] = 'v2'
+            response['api_version'] = '2'
             response['token_type'] = 'Bearer'
             # Maybe include user profile in v2
             response['user_profile'] = {
@@ -47,11 +47,11 @@ class APIVersionHandler:
         """
         Validate OTP format based on API version
         """
-        if version == 'v1':
-            # v1: 6-digit OTP
+        if version == '1':
+            # 1: 6-digit OTP
             return str(otp).isdigit() and len(str(otp)) == 6
-        elif version == 'v2':
-            # Future v2 might support alphanumeric OTP
+        elif version == '2':
+            # Future 2 might support alphanumeric OTP
             return len(str(otp)) >= 4 and len(str(otp)) <= 8
         else:
             return str(otp).isdigit() and len(str(otp)) == 6
@@ -64,7 +64,7 @@ class APIVersionHandler:
 #     result = otp_service.send_otp_sms(mobile_number)
 #     
 #     # Format response based on version
-#     version = getattr(request, 'version', 'v1')
+#     version = getattr(request, 'version', '1')
 #     formatted_result = APIVersionHandler.get_send_otp_response(result, version)
 #     
 #     return Response(formatted_result, status=status_code)

@@ -144,8 +144,8 @@ REST_FRAMEWORK = {
     ],
     # Add versioning configuration
     'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.URLPathVersioning',
-    'DEFAULT_VERSION': 'v1',
-    'ALLOWED_VERSIONS': ['v1', 'v2'],  # Add more versions as needed
+    'DEFAULT_VERSION': '1',
+    'ALLOWED_VERSIONS': ['1', '2'],  # Add more versions as needed
     'VERSION_PARAM': 'version',
 }
 
