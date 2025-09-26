@@ -241,13 +241,19 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 )
 
             # Get providers who are active and have this subcategory in their skills
+            # First get user IDs who have this subcategory skill
+            user_ids_with_subcategory = UserWorkSubCategory.objects.filter(
+                sub_category=subcategory,
+                user_work_selection__main_category=category
+            ).values_list('user_work_selection__user__user_id', flat=True)
+
             providers = ProviderActiveStatus.objects.filter(
                 is_active=True,
                 main_category=category,
                 latitude__isnull=False,
                 longitude__isnull=False,
-                user__profile__work_selection__selected_subcategories__sub_category=subcategory
-            ).select_related('user__profile').distinct()
+                user_id__in=user_ids_with_subcategory
+            ).select_related('user__profile')
 
             nearby_providers = []
             for provider in providers:

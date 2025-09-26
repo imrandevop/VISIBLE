@@ -242,13 +242,19 @@ def seeker_search_toggle(request, version=None):
         nearby_providers = []
         if searching:
             # Get providers who are active and have the searched subcategory in their skills
+            # First get user IDs who have this subcategory skill
+            user_ids_with_subcategory = UserWorkSubCategory.objects.filter(
+                sub_category=sub_category,
+                user_work_selection__main_category=main_category
+            ).values_list('user_work_selection__user__user_id', flat=True)
+
             active_providers = ProviderActiveStatus.objects.filter(
                 is_active=True,
                 main_category=main_category,
                 latitude__isnull=False,
                 longitude__isnull=False,
-                user__profile__work_selection__selected_subcategories__sub_category=sub_category
-            ).select_related('user__profile').distinct()
+                user_id__in=user_ids_with_subcategory
+            ).select_related('user__profile')
 
             for provider in active_providers:
                 distance = calculate_distance(
