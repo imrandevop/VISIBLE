@@ -1,3 +1,4 @@
+import logging
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -5,8 +6,10 @@ from rest_framework import status
 from django.db import transaction
 
 from apps.core.models import ProviderActiveStatus, SeekerSearchPreference, calculate_distance
-from apps.work_categories.models import WorkCategory, WorkSubCategory, UserWorkSubCategory
+from apps.work_categories.models import WorkCategory, WorkSubCategory, UserWorkSubCategory, UserWorkSelection, WorkPortfolioImage
 from apps.profiles.models import UserProfile
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(['POST'])
@@ -277,7 +280,7 @@ def seeker_search_toggle(request, version=None):
                 latitude__isnull=False,
                 longitude__isnull=False,
                 user_id__in=user_ids_with_subcategory
-            ).select_related('user__profile').prefetch_related('user__profile__work_selection__portfolio_images')
+            ).select_related('user__profile')
 
             for provider in active_providers:
                 distance = calculate_distance(
@@ -289,12 +292,17 @@ def seeker_search_toggle(request, version=None):
                     # Get portfolio images safely
                     portfolio_images = []
                     try:
-                        if hasattr(provider.user, 'profile') and hasattr(provider.user.profile, 'work_selection'):
-                            work_selection = provider.user.profile.work_selection
-                            if work_selection:
-                                portfolio_images = [
-                                    img.image.url for img in work_selection.portfolio_images.all()
-                                ]
+                        # Use direct query to avoid potential prefetch issues
+                        work_selection = UserWorkSelection.objects.filter(
+                            user=provider.user.profile
+                        ).first()
+
+                        if work_selection:
+                            portfolio_images_objs = WorkPortfolioImage.objects.filter(
+                                user_work_selection=work_selection
+                            ).order_by('image_order')
+
+                            portfolio_images = [img.image.url for img in portfolio_images_objs]
                     except Exception:
                         # If there's any error getting portfolio images, continue with empty list
                         portfolio_images = []
@@ -340,6 +348,7 @@ def seeker_search_toggle(request, version=None):
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
+        logger.error(f"Seeker search toggle error for user {request.user.id}: {str(e)}", exc_info=True)
         return Response({
             "error": "An unexpected server error occurred. Please try again."
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
