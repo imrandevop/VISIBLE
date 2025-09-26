@@ -5,7 +5,7 @@ from rest_framework import status
 from django.db import transaction
 
 from apps.core.models import ProviderActiveStatus, SeekerSearchPreference, calculate_distance
-from apps.work_categories.models import WorkCategory, WorkSubCategory
+from apps.work_categories.models import WorkCategory, WorkSubCategory, UserWorkSubCategory
 from apps.profiles.models import UserProfile
 
 
@@ -22,7 +22,9 @@ def provider_toggle_status(request, version=None):
         "longitude": 75.8577,
         "latitude": 11.2588,
         "provider_category": "worker",
+        "provider_category_code": "MS0001",
         "provider_subcategory": "plumber",
+        "provider_subcategory_code": "SS0001",
         "active": true
     }
     """
@@ -30,13 +32,15 @@ def provider_toggle_status(request, version=None):
         longitude = request.data.get('longitude')
         latitude = request.data.get('latitude')
         provider_category = request.data.get('provider_category', '').strip()
+        provider_category_code = request.data.get('provider_category_code', '').strip()
         provider_subcategory = request.data.get('provider_subcategory', '').strip()
+        provider_subcategory_code = request.data.get('provider_subcategory_code', '').strip()
         active = request.data.get('active', False)
 
         # Validate required fields
-        if not all([longitude, latitude, provider_category, provider_subcategory]):
+        if not all([longitude, latitude, provider_category, provider_category_code, provider_subcategory, provider_subcategory_code]):
             return Response({
-                "error": "longitude, latitude, provider_category, and provider_subcategory are required"
+                "error": "longitude, latitude, provider_category, provider_category_code, provider_subcategory, and provider_subcategory_code are required"
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # Validate user is a provider
@@ -51,21 +55,38 @@ def provider_toggle_status(request, version=None):
                 "error": "User profile not found"
             }, status=status.HTTP_404_NOT_FOUND)
 
-        # Validate categories exist
+        # Validate categories exist and match provided codes
         try:
-            main_category = WorkCategory.objects.get(name=provider_category, is_active=True)
+            main_category = WorkCategory.objects.get(
+                category_code=provider_category_code,
+                is_active=True
+            )
+
+            # Validate that provided name matches the code
+            if main_category.name != provider_category:
+                return Response({
+                    "error": f"Category name '{provider_category}' does not match code '{provider_category_code}'"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
             sub_category = WorkSubCategory.objects.get(
-                name=provider_subcategory,
+                subcategory_code=provider_subcategory_code,
                 category=main_category,
                 is_active=True
             )
+
+            # Validate that provided subcategory name matches the code
+            if sub_category.name != provider_subcategory:
+                return Response({
+                    "error": f"Subcategory name '{provider_subcategory}' does not match code '{provider_subcategory_code}'"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
         except WorkCategory.DoesNotExist:
             return Response({
-                "error": f"Category '{provider_category}' not found or inactive"
+                "error": f"Category with code '{provider_category_code}' not found or inactive"
             }, status=status.HTTP_400_BAD_REQUEST)
         except WorkSubCategory.DoesNotExist:
             return Response({
-                "error": f"Subcategory '{provider_subcategory}' not found or inactive"
+                "error": f"Subcategory with code '{provider_subcategory_code}' not found or inactive under category code '{provider_category_code}'"
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # Update or create provider status
@@ -92,8 +113,14 @@ def provider_toggle_status(request, version=None):
         return Response({
             "status": "success",
             "active": provider_status.is_active,
-            "category": main_category.name,
-            "subcategory": sub_category.name,
+            "category": {
+                "code": main_category.category_code,
+                "name": main_category.name
+            },
+            "subcategory": {
+                "code": sub_category.subcategory_code,
+                "name": sub_category.name
+            },
             "current_location": {
                 "latitude": provider_status.latitude,
                 "longitude": provider_status.longitude
@@ -119,6 +146,9 @@ def seeker_search_toggle(request, version=None):
         "longitude": 75.8577,
         "latitude": 11.2588,
         "searching_category": "worker",
+        "searching_category_code": "MS0001",
+        "searching_subcategory": "plumber",
+        "searching_subcategory_code": "SS0001",
         "searching": true,
         "distance_radius": 5
     }
@@ -127,13 +157,16 @@ def seeker_search_toggle(request, version=None):
         longitude = request.data.get('longitude')
         latitude = request.data.get('latitude')
         searching_category = request.data.get('searching_category', '').strip()
+        searching_category_code = request.data.get('searching_category_code', '').strip()
+        searching_subcategory = request.data.get('searching_subcategory', '').strip()
+        searching_subcategory_code = request.data.get('searching_subcategory_code', '').strip()
         searching = request.data.get('searching', False)
         distance_radius = request.data.get('distance_radius', 5)
 
         # Validate required fields
-        if not all([longitude, latitude, searching_category]):
+        if not all([longitude, latitude, searching_category, searching_category_code, searching_subcategory, searching_subcategory_code]):
             return Response({
-                "error": "longitude, latitude, and searching_category are required"
+                "error": "longitude, latitude, searching_category, searching_category_code, searching_subcategory, and searching_subcategory_code are required"
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # Validate user is a seeker
@@ -148,12 +181,38 @@ def seeker_search_toggle(request, version=None):
                 "error": "User profile not found"
             }, status=status.HTTP_404_NOT_FOUND)
 
-        # Validate category exists
+        # Validate categories exist and match provided codes
         try:
-            main_category = WorkCategory.objects.get(name=searching_category, is_active=True)
+            main_category = WorkCategory.objects.get(
+                category_code=searching_category_code,
+                is_active=True
+            )
+
+            # Validate that provided name matches the code
+            if main_category.name != searching_category:
+                return Response({
+                    "error": f"Category name '{searching_category}' does not match code '{searching_category_code}'"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            sub_category = WorkSubCategory.objects.get(
+                subcategory_code=searching_subcategory_code,
+                category=main_category,
+                is_active=True
+            )
+
+            # Validate that provided subcategory name matches the code
+            if sub_category.name != searching_subcategory:
+                return Response({
+                    "error": f"Subcategory name '{searching_subcategory}' does not match code '{searching_subcategory_code}'"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
         except WorkCategory.DoesNotExist:
             return Response({
-                "error": f"Category '{searching_category}' not found or inactive"
+                "error": f"Category with code '{searching_category_code}' not found or inactive"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except WorkSubCategory.DoesNotExist:
+            return Response({
+                "error": f"Subcategory with code '{searching_subcategory_code}' not found or inactive under category code '{searching_category_code}'"
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # Update or create seeker search preference
@@ -165,6 +224,7 @@ def seeker_search_toggle(request, version=None):
                     'latitude': latitude,
                     'longitude': longitude,
                     'searching_category': main_category,
+                    'searching_subcategory': sub_category,
                     'distance_radius': distance_radius,
                 }
             )
@@ -174,18 +234,21 @@ def seeker_search_toggle(request, version=None):
                 search_preference.latitude = latitude
                 search_preference.longitude = longitude
                 search_preference.searching_category = main_category
+                search_preference.searching_subcategory = sub_category
                 search_preference.distance_radius = distance_radius
                 search_preference.save()
 
         # Find nearby active providers if searching is enabled
         nearby_providers = []
         if searching:
+            # Get providers who are active and have the searched subcategory in their skills
             active_providers = ProviderActiveStatus.objects.filter(
                 is_active=True,
                 main_category=main_category,
                 latitude__isnull=False,
-                longitude__isnull=False
-            ).select_related('user__profile', 'sub_category')
+                longitude__isnull=False,
+                user__profile__work_selection__selected_subcategories__sub_category=sub_category
+            ).select_related('user__profile').distinct()
 
             for provider in active_providers:
                 distance = calculate_distance(
@@ -197,7 +260,10 @@ def seeker_search_toggle(request, version=None):
                     nearby_providers.append({
                         'provider_id': provider.user.profile.provider_id,
                         'name': provider.user.profile.full_name,
-                        'subcategory': provider.sub_category.display_name,
+                        'subcategory': {
+                            'code': sub_category.subcategory_code,
+                            'name': sub_category.display_name
+                        },
                         'distance_km': round(distance, 2),
                         'location': {
                             'latitude': provider.latitude,
@@ -211,7 +277,14 @@ def seeker_search_toggle(request, version=None):
         return Response({
             "status": "success",
             "searching": search_preference.is_searching,
-            "category": main_category.name,
+            "category": {
+                "code": main_category.category_code,
+                "name": main_category.name
+            },
+            "subcategory": {
+                "code": sub_category.subcategory_code,
+                "name": sub_category.name
+            },
             "distance_radius": search_preference.distance_radius,
             "current_location": {
                 "latitude": search_preference.latitude,

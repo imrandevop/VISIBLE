@@ -76,6 +76,11 @@ class SeekerSearchPreference(BaseModel):
         on_delete=models.CASCADE,
         null=True, blank=True
     )
+    searching_subcategory = models.ForeignKey(
+        'work_categories.WorkSubCategory',
+        on_delete=models.CASCADE,
+        null=True, blank=True
+    )
     distance_radius = models.IntegerField(default=5)  # in kilometers
     last_search_at = models.DateTimeField(auto_now=True)
 
