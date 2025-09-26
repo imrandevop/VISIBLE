@@ -284,7 +284,7 @@ class LocationConsumer(AsyncWebsocketConsumer):
 
             # Get provider's subcategories
             provider_subcategories = UserWorkSubCategory.objects.filter(
-                user_work_selection__user__id=provider_user_id,
+                user_work_selection__user__user__id=provider_user_id,
                 user_work_selection__main_category=category
             ).values_list('sub_category', flat=True)
 
@@ -322,7 +322,7 @@ class LocationConsumer(AsyncWebsocketConsumer):
             user_ids_with_subcategory = UserWorkSubCategory.objects.filter(
                 sub_category=subcategory,
                 user_work_selection__main_category=category
-            ).values_list('user_work_selection__user__id', flat=True)
+            ).values_list('user_work_selection__user__user__id', flat=True)
 
             providers = ProviderActiveStatus.objects.filter(
                 is_active=True,
@@ -442,7 +442,7 @@ class LocationConsumer(AsyncWebsocketConsumer):
             user_ids_with_subcategory = UserWorkSubCategory.objects.filter(
                 sub_category=subcategory,
                 user_work_selection__main_category=category
-            ).values_list('user_work_selection__user__id', flat=True)
+            ).values_list('user_work_selection__user__user__id', flat=True)
 
             providers = ProviderActiveStatus.objects.filter(
                 is_active=True,

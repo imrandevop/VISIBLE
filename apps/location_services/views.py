@@ -267,12 +267,16 @@ def seeker_search_toggle(request, version=None):
         # Find nearby active providers if searching is enabled
         nearby_providers = []
         if searching:
+            logger.info(f"Searching for providers in category {main_category.category_code}, subcategory {sub_category.subcategory_code}")
+
             # Get providers who are active and have the searched subcategory in their skills
             # First get user IDs who have this subcategory skill
             user_ids_with_subcategory = UserWorkSubCategory.objects.filter(
                 sub_category=sub_category,
                 user_work_selection__main_category=main_category
-            ).values_list('user_work_selection__user__id', flat=True)
+            ).values_list('user_work_selection__user__user__id', flat=True)
+
+            logger.info(f"Found {len(user_ids_with_subcategory)} users with subcategory skills: {list(user_ids_with_subcategory)}")
 
             active_providers = ProviderActiveStatus.objects.filter(
                 is_active=True,
@@ -282,11 +286,15 @@ def seeker_search_toggle(request, version=None):
                 user_id__in=user_ids_with_subcategory
             ).select_related('user__profile')
 
+            logger.info(f"Found {active_providers.count()} active providers with location data")
+
             for provider in active_providers:
                 distance = calculate_distance(
                     latitude, longitude,
                     provider.latitude, provider.longitude
                 )
+
+                logger.info(f"Provider {provider.user.id} at ({provider.latitude}, {provider.longitude}) - Distance: {distance:.2f}km vs radius: {distance_radius}km")
 
                 if distance <= distance_radius:
                     # Get portfolio images safely
@@ -327,6 +335,7 @@ def seeker_search_toggle(request, version=None):
 
             # Sort by distance
             nearby_providers.sort(key=lambda x: x['distance_km'])
+            logger.info(f"Final result: Found {len(nearby_providers)} nearby providers within {distance_radius}km")
 
         return Response({
             "status": "success",
