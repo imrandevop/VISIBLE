@@ -272,7 +272,7 @@ def seeker_search_toggle(request, version=None):
             user_ids_with_subcategory = UserWorkSubCategory.objects.filter(
                 sub_category=sub_category,
                 user_work_selection__main_category=main_category
-            ).values_list('user_work_selection__user__user_id', flat=True)
+            ).values_list('user_work_selection__user__id', flat=True)
 
             active_providers = ProviderActiveStatus.objects.filter(
                 is_active=True,
