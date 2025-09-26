@@ -1,10 +1,14 @@
 import json
+import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
+from django.db import transaction
 from apps.core.models import ProviderActiveStatus, SeekerSearchPreference, calculate_distance
 from apps.profiles.models import UserProfile
-from apps.work_categories.models import WorkCategory, WorkSubCategory, UserWorkSubCategory
+from apps.work_categories.models import WorkCategory, WorkSubCategory, UserWorkSubCategory, WorkPortfolioImage
+
+logger = logging.getLogger(__name__)
 
 
 class LocationConsumer(AsyncWebsocketConsumer):
@@ -51,7 +55,14 @@ class LocationConsumer(AsyncWebsocketConsumer):
 
         except json.JSONDecodeError:
             await self.send(text_data=json.dumps({
-                'error': 'Invalid JSON'
+                'type': 'error',
+                'error': 'Invalid JSON format'
+            }))
+        except Exception as e:
+            logger.error(f"WebSocket error for user {self.user.id}: {str(e)}")
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error': 'An unexpected error occurred'
             }))
 
     async def handle_provider_status_update(self, data):
@@ -111,9 +122,26 @@ class LocationConsumer(AsyncWebsocketConsumer):
             }))
             return
 
-        distance_radius = data.get('distance_radius')
-        latitude = data.get('latitude')
-        longitude = data.get('longitude')
+        # Get and validate fields
+        try:
+            distance_radius = float(data.get('distance_radius')) if data.get('distance_radius') is not None else None
+            latitude = float(data.get('latitude')) if data.get('latitude') is not None else None
+            longitude = float(data.get('longitude')) if data.get('longitude') is not None else None
+        except (ValueError, TypeError):
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error': 'Invalid numeric values for distance_radius, latitude, or longitude'
+            }))
+            return
+
+        # Validate distance radius range
+        if distance_radius is not None and (distance_radius <= 0 or distance_radius > 50):
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error': 'Distance radius must be between 1 and 50 km'
+            }))
+            return
+
         category_code = data.get('category_code', '').strip()
         subcategory_code = data.get('subcategory_code', '').strip()
 
@@ -365,8 +393,6 @@ class LocationConsumer(AsyncWebsocketConsumer):
     def update_seeker_distance_preference(self, user_id, distance_radius, latitude, longitude, category_code, subcategory_code):
         """Update seeker's search preferences with new distance radius"""
         try:
-            from django.db import transaction
-
             with transaction.atomic():
                 # Get category and subcategory objects
                 main_category = WorkCategory.objects.get(category_code=category_code, is_active=True)
@@ -434,12 +460,18 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 )
 
                 if distance <= radius:
-                    # Get portfolio images
+                    # Get portfolio images safely
                     portfolio_images = []
-                    if hasattr(provider.user.profile, 'work_selection') and provider.user.profile.work_selection:
-                        portfolio_images = [
-                            img.image.url for img in provider.user.profile.work_selection.portfolio_images.all()
-                        ]
+                    try:
+                        if hasattr(provider.user, 'profile') and hasattr(provider.user.profile, 'work_selection'):
+                            work_selection = provider.user.profile.work_selection
+                            if work_selection:
+                                portfolio_images = [
+                                    img.image.url for img in work_selection.portfolio_images.all()
+                                ]
+                    except Exception as e:
+                        logger.warning(f"Error getting portfolio images for provider {provider.user.id}: {str(e)}")
+                        portfolio_images = []
 
                     nearby_providers.append({
                         'provider_id': provider.user.profile.provider_id,

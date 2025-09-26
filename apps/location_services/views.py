@@ -27,8 +27,26 @@ def provider_toggle_status(request, version=None):
     }
     """
     try:
+        # Get and validate numeric fields
         longitude = request.data.get('longitude')
         latitude = request.data.get('latitude')
+
+        # Validate longitude
+        try:
+            longitude = float(longitude) if longitude is not None else None
+        except (ValueError, TypeError):
+            return Response({
+                "error": "Invalid longitude value"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate latitude
+        try:
+            latitude = float(latitude) if latitude is not None else None
+        except (ValueError, TypeError):
+            return Response({
+                "error": "Invalid latitude value"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         provider_category_code = request.data.get('provider_category_code', '').strip()
         provider_subcategory_code = request.data.get('provider_subcategory_code', '').strip()
         active = request.data.get('active', False)
@@ -143,12 +161,42 @@ def seeker_search_toggle(request, version=None):
     - distance and location data
     """
     try:
+        # Get and validate numeric fields
         longitude = request.data.get('longitude')
         latitude = request.data.get('latitude')
+        distance_radius = request.data.get('distance_radius', 5)
+
+        # Validate longitude
+        try:
+            longitude = float(longitude) if longitude is not None else None
+        except (ValueError, TypeError):
+            return Response({
+                "error": "Invalid longitude value"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate latitude
+        try:
+            latitude = float(latitude) if latitude is not None else None
+        except (ValueError, TypeError):
+            return Response({
+                "error": "Invalid latitude value"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate distance_radius
+        try:
+            distance_radius = int(distance_radius)
+            if distance_radius <= 0 or distance_radius > 50:  # Reasonable limits
+                return Response({
+                    "error": "Distance radius must be between 1 and 50 km"
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except (ValueError, TypeError):
+            return Response({
+                "error": "Invalid distance radius value"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         searching_category_code = request.data.get('searching_category_code', '').strip()
         searching_subcategory_code = request.data.get('searching_subcategory_code', '').strip()
         searching = request.data.get('searching', False)
-        distance_radius = request.data.get('distance_radius', 5)
 
         # Validate required fields
         if not all([longitude, latitude, searching_category_code, searching_subcategory_code]):
@@ -238,12 +286,18 @@ def seeker_search_toggle(request, version=None):
                 )
 
                 if distance <= distance_radius:
-                    # Get portfolio images
+                    # Get portfolio images safely
                     portfolio_images = []
-                    if hasattr(provider.user.profile, 'work_selection') and provider.user.profile.work_selection:
-                        portfolio_images = [
-                            img.image.url for img in provider.user.profile.work_selection.portfolio_images.all()
-                        ]
+                    try:
+                        if hasattr(provider.user, 'profile') and hasattr(provider.user.profile, 'work_selection'):
+                            work_selection = provider.user.profile.work_selection
+                            if work_selection:
+                                portfolio_images = [
+                                    img.image.url for img in work_selection.portfolio_images.all()
+                                ]
+                    except Exception:
+                        # If there's any error getting portfolio images, continue with empty list
+                        portfolio_images = []
 
                     nearby_providers.append({
                         'provider_id': provider.user.profile.provider_id,
