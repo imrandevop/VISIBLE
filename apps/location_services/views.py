@@ -134,6 +134,13 @@ def seeker_search_toggle(request, version=None):
         "searching": true,
         "distance_radius": 5
     }
+
+    Response includes nearby providers with:
+    - provider_id, name, rating (default 0)
+    - description (from UserProfile.bio)
+    - is_verified (default false)
+    - images (portfolio images array)
+    - distance and location data
     """
     try:
         longitude = request.data.get('longitude')
@@ -222,7 +229,7 @@ def seeker_search_toggle(request, version=None):
                 latitude__isnull=False,
                 longitude__isnull=False,
                 user_id__in=user_ids_with_subcategory
-            ).select_related('user__profile')
+            ).select_related('user__profile').prefetch_related('user__profile__work_selection__portfolio_images')
 
             for provider in active_providers:
                 distance = calculate_distance(
@@ -231,9 +238,20 @@ def seeker_search_toggle(request, version=None):
                 )
 
                 if distance <= distance_radius:
+                    # Get portfolio images
+                    portfolio_images = []
+                    if hasattr(provider.user.profile, 'work_selection') and provider.user.profile.work_selection:
+                        portfolio_images = [
+                            img.image.url for img in provider.user.profile.work_selection.portfolio_images.all()
+                        ]
+
                     nearby_providers.append({
                         'provider_id': provider.user.profile.provider_id,
                         'name': provider.user.profile.full_name,
+                        'rating': 0,  # Default rating as requested
+                        'description': provider.user.profile.bio or "",  # From UserProfile.bio
+                        'is_verified': False,  # Default false as requested
+                        'images': portfolio_images,  # Portfolio images array
                         'subcategory': {
                             'code': sub_category.subcategory_code,
                             'name': sub_category.display_name

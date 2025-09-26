@@ -46,6 +46,8 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 await self.handle_provider_status_update(text_data_json)
             elif message_type == 'seeker_search_update':
                 await self.handle_seeker_search_update(text_data_json)
+            elif message_type == 'update_distance_radius':
+                await self.handle_distance_radius_update(text_data_json)
 
         except json.JSONDecodeError:
             await self.send(text_data=json.dumps({
@@ -90,6 +92,71 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 'type': 'nearby_providers',
                 'providers': nearby_providers
             }))
+
+    async def handle_distance_radius_update(self, data):
+        """Handle seeker updating their distance radius"""
+        if self.user_type != 'seeker':
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error': 'Only seekers can update distance radius'
+            }))
+            return
+
+        # Validate user is a seeker
+        user_profile = await self.get_user_profile(self.user.id)
+        if not user_profile or user_profile.get('user_type') != 'seeker':
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error': 'Only seekers can update distance radius'
+            }))
+            return
+
+        distance_radius = data.get('distance_radius')
+        latitude = data.get('latitude')
+        longitude = data.get('longitude')
+        category_code = data.get('category_code', '').strip()
+        subcategory_code = data.get('subcategory_code', '').strip()
+
+        # Validate required fields
+        if not all([distance_radius, latitude, longitude, category_code, subcategory_code]):
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error': 'distance_radius, latitude, longitude, category_code, and subcategory_code are required'
+            }))
+            return
+
+        # Validate categories exist
+        categories_valid = await self.validate_categories(category_code, subcategory_code)
+        if not categories_valid:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error': f'Category with code \'{category_code}\' or subcategory with code \'{subcategory_code}\' not found or inactive'
+            }))
+            return
+
+        # Update seeker's search preference in database
+        update_success = await self.update_seeker_distance_preference(
+            self.user.id, distance_radius, latitude, longitude, category_code, subcategory_code
+        )
+
+        if not update_success:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error': 'Failed to update search preferences'
+            }))
+            return
+
+        # Get updated nearby providers with new distance radius
+        nearby_providers = await self.get_nearby_providers_enhanced(
+            latitude, longitude, distance_radius, category_code, subcategory_code
+        )
+
+        # Send response with updated provider list
+        await self.send(text_data=json.dumps({
+            'type': 'distance_updated',
+            'distance_radius': distance_radius,
+            'providers': nearby_providers
+        }))
 
     async def notify_nearby_seekers_about_new_provider(self, category_code):
         """Notify seekers when a new provider comes online"""
@@ -248,6 +315,139 @@ class LocationConsumer(AsyncWebsocketConsumer):
                     nearby_providers.append({
                         'provider_id': provider.user.profile.provider_id,
                         'name': provider.user.profile.full_name,
+                        'rating': 0,  # Default rating
+                        'description': provider.user.profile.bio or "",  # From UserProfile.bio
+                        'is_verified': False,  # Default false
+                        'images': [],  # Will be populated by enhanced method
+                        'subcategory': {
+                            'code': subcategory.subcategory_code,
+                            'name': subcategory.display_name
+                        },
+                        'distance_km': round(distance, 2),
+                        'location': {
+                            'latitude': provider.latitude,
+                            'longitude': provider.longitude
+                        }
+                    })
+
+            return sorted(nearby_providers, key=lambda x: x['distance_km'])
+        except (WorkCategory.DoesNotExist, WorkSubCategory.DoesNotExist):
+            return []
+
+    @database_sync_to_async
+    def get_user_profile(self, user_id):
+        """Get user profile information"""
+        try:
+            profile = UserProfile.objects.get(user_id=user_id)
+            return {
+                'user_type': profile.user_type,
+                'full_name': profile.full_name,
+                'bio': profile.bio or ""
+            }
+        except UserProfile.DoesNotExist:
+            return None
+
+    @database_sync_to_async
+    def validate_categories(self, category_code, subcategory_code):
+        """Validate that category and subcategory exist and are active"""
+        try:
+            category = WorkCategory.objects.get(category_code=category_code, is_active=True)
+            WorkSubCategory.objects.get(
+                subcategory_code=subcategory_code,
+                category=category,
+                is_active=True
+            )
+            return True
+        except (WorkCategory.DoesNotExist, WorkSubCategory.DoesNotExist):
+            return False
+
+    @database_sync_to_async
+    def update_seeker_distance_preference(self, user_id, distance_radius, latitude, longitude, category_code, subcategory_code):
+        """Update seeker's search preferences with new distance radius"""
+        try:
+            from django.db import transaction
+
+            with transaction.atomic():
+                # Get category and subcategory objects
+                main_category = WorkCategory.objects.get(category_code=category_code, is_active=True)
+                sub_category = WorkSubCategory.objects.get(
+                    subcategory_code=subcategory_code,
+                    category=main_category,
+                    is_active=True
+                )
+
+                # Update or create seeker search preference
+                search_preference, created = SeekerSearchPreference.objects.get_or_create(
+                    user_id=user_id,
+                    defaults={
+                        'is_searching': True,
+                        'latitude': latitude,
+                        'longitude': longitude,
+                        'searching_category': main_category,
+                        'searching_subcategory': sub_category,
+                        'distance_radius': distance_radius,
+                    }
+                )
+
+                if not created:
+                    search_preference.latitude = latitude
+                    search_preference.longitude = longitude
+                    search_preference.searching_category = main_category
+                    search_preference.searching_subcategory = sub_category
+                    search_preference.distance_radius = distance_radius
+                    search_preference.save()
+
+                return True
+        except Exception:
+            return False
+
+    @database_sync_to_async
+    def get_nearby_providers_enhanced(self, seeker_lat, seeker_lng, radius, category_code, subcategory_code):
+        """Get nearby active providers with enhanced information including portfolio images"""
+        try:
+            category = WorkCategory.objects.get(category_code=category_code, is_active=True)
+            subcategory = WorkSubCategory.objects.get(
+                subcategory_code=subcategory_code,
+                category=category,
+                is_active=True
+            )
+
+            # Get providers who are active and have this subcategory in their skills
+            user_ids_with_subcategory = UserWorkSubCategory.objects.filter(
+                sub_category=subcategory,
+                user_work_selection__main_category=category
+            ).values_list('user_work_selection__user__user_id', flat=True)
+
+            providers = ProviderActiveStatus.objects.filter(
+                is_active=True,
+                main_category=category,
+                latitude__isnull=False,
+                longitude__isnull=False,
+                user_id__in=user_ids_with_subcategory
+            ).select_related('user__profile').prefetch_related('user__profile__work_selection__portfolio_images')
+
+            nearby_providers = []
+            for provider in providers:
+                distance = calculate_distance(
+                    seeker_lat, seeker_lng,
+                    provider.latitude, provider.longitude
+                )
+
+                if distance <= radius:
+                    # Get portfolio images
+                    portfolio_images = []
+                    if hasattr(provider.user.profile, 'work_selection') and provider.user.profile.work_selection:
+                        portfolio_images = [
+                            img.image.url for img in provider.user.profile.work_selection.portfolio_images.all()
+                        ]
+
+                    nearby_providers.append({
+                        'provider_id': provider.user.profile.provider_id,
+                        'name': provider.user.profile.full_name,
+                        'rating': 0,  # Default rating as requested
+                        'description': provider.user.profile.bio or "",  # From UserProfile.bio
+                        'is_verified': False,  # Default false as requested
+                        'images': portfolio_images,  # Portfolio images array
                         'subcategory': {
                             'code': subcategory.subcategory_code,
                             'name': subcategory.display_name
