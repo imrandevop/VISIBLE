@@ -21,9 +21,7 @@ def provider_toggle_status(request, version=None):
     {
         "longitude": 75.8577,
         "latitude": 11.2588,
-        "provider_category": "worker",
         "provider_category_code": "MS0001",
-        "provider_subcategory": "plumber",
         "provider_subcategory_code": "SS0001",
         "active": true
     }
@@ -31,16 +29,14 @@ def provider_toggle_status(request, version=None):
     try:
         longitude = request.data.get('longitude')
         latitude = request.data.get('latitude')
-        provider_category = request.data.get('provider_category', '').strip()
         provider_category_code = request.data.get('provider_category_code', '').strip()
-        provider_subcategory = request.data.get('provider_subcategory', '').strip()
         provider_subcategory_code = request.data.get('provider_subcategory_code', '').strip()
         active = request.data.get('active', False)
 
         # Validate required fields
-        if not all([longitude, latitude, provider_category, provider_category_code, provider_subcategory, provider_subcategory_code]):
+        if not all([longitude, latitude, provider_category_code, provider_subcategory_code]):
             return Response({
-                "error": "longitude, latitude, provider_category, provider_category_code, provider_subcategory, and provider_subcategory_code are required"
+                "error": "longitude, latitude, provider_category_code, and provider_subcategory_code are required"
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # Validate user is a provider
@@ -62,23 +58,11 @@ def provider_toggle_status(request, version=None):
                 is_active=True
             )
 
-            # Validate that provided name matches the code
-            if main_category.name != provider_category:
-                return Response({
-                    "error": f"Category name '{provider_category}' does not match code '{provider_category_code}'"
-                }, status=status.HTTP_400_BAD_REQUEST)
-
             sub_category = WorkSubCategory.objects.get(
                 subcategory_code=provider_subcategory_code,
                 category=main_category,
                 is_active=True
             )
-
-            # Validate that provided subcategory name matches the code
-            if sub_category.name != provider_subcategory:
-                return Response({
-                    "error": f"Subcategory name '{provider_subcategory}' does not match code '{provider_subcategory_code}'"
-                }, status=status.HTTP_400_BAD_REQUEST)
 
         except WorkCategory.DoesNotExist:
             return Response({
@@ -145,9 +129,7 @@ def seeker_search_toggle(request, version=None):
     {
         "longitude": 75.8577,
         "latitude": 11.2588,
-        "searching_category": "worker",
         "searching_category_code": "MS0001",
-        "searching_subcategory": "plumber",
         "searching_subcategory_code": "SS0001",
         "searching": true,
         "distance_radius": 5
@@ -156,17 +138,15 @@ def seeker_search_toggle(request, version=None):
     try:
         longitude = request.data.get('longitude')
         latitude = request.data.get('latitude')
-        searching_category = request.data.get('searching_category', '').strip()
         searching_category_code = request.data.get('searching_category_code', '').strip()
-        searching_subcategory = request.data.get('searching_subcategory', '').strip()
         searching_subcategory_code = request.data.get('searching_subcategory_code', '').strip()
         searching = request.data.get('searching', False)
         distance_radius = request.data.get('distance_radius', 5)
 
         # Validate required fields
-        if not all([longitude, latitude, searching_category, searching_category_code, searching_subcategory, searching_subcategory_code]):
+        if not all([longitude, latitude, searching_category_code, searching_subcategory_code]):
             return Response({
-                "error": "longitude, latitude, searching_category, searching_category_code, searching_subcategory, and searching_subcategory_code are required"
+                "error": "longitude, latitude, searching_category_code, and searching_subcategory_code are required"
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # Validate user is a seeker
@@ -188,23 +168,11 @@ def seeker_search_toggle(request, version=None):
                 is_active=True
             )
 
-            # Validate that provided name matches the code
-            if main_category.name != searching_category:
-                return Response({
-                    "error": f"Category name '{searching_category}' does not match code '{searching_category_code}'"
-                }, status=status.HTTP_400_BAD_REQUEST)
-
             sub_category = WorkSubCategory.objects.get(
                 subcategory_code=searching_subcategory_code,
                 category=main_category,
                 is_active=True
             )
-
-            # Validate that provided subcategory name matches the code
-            if sub_category.name != searching_subcategory:
-                return Response({
-                    "error": f"Subcategory name '{searching_subcategory}' does not match code '{searching_subcategory_code}'"
-                }, status=status.HTTP_400_BAD_REQUEST)
 
         except WorkCategory.DoesNotExist:
             return Response({

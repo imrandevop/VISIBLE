@@ -58,15 +58,14 @@ class LocationConsumer(AsyncWebsocketConsumer):
             return
 
         active = data.get('active', False)
-        category_name = data.get('category', '')
         category_code = data.get('category_code', '')
 
         if active:
             # Notify seekers in the same category who are currently searching
-            await self.notify_nearby_seekers_about_new_provider(category_name, category_code)
+            await self.notify_nearby_seekers_about_new_provider(category_code)
         else:
             # Notify seekers that this provider went offline
-            await self.notify_seekers_about_provider_offline(category_name, category_code)
+            await self.notify_seekers_about_provider_offline(category_code)
 
     async def handle_seeker_search_update(self, data):
         """Handle seeker starting/stopping search"""
@@ -74,9 +73,7 @@ class LocationConsumer(AsyncWebsocketConsumer):
             return
 
         searching = data.get('searching', False)
-        category_name = data.get('category', '')
         category_code = data.get('category_code', '')
-        subcategory_name = data.get('subcategory', '')
         subcategory_code = data.get('subcategory_code', '')
 
         if searching:
@@ -85,9 +82,7 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 data.get('latitude'),
                 data.get('longitude'),
                 data.get('distance_radius', 5),
-                category_name,
                 category_code,
-                subcategory_name,
                 subcategory_code
             )
 
@@ -96,7 +91,7 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 'providers': nearby_providers
             }))
 
-    async def notify_nearby_seekers_about_new_provider(self, category_name, category_code=None):
+    async def notify_nearby_seekers_about_new_provider(self, category_code):
         """Notify seekers when a new provider comes online"""
         provider_status = await self.get_provider_status(self.user.id)
 
@@ -104,7 +99,7 @@ class LocationConsumer(AsyncWebsocketConsumer):
             return
 
         # Get all seekers currently searching in this category
-        searching_seekers = await self.get_searching_seekers_by_provider(self.user.id, category_name, category_code)
+        searching_seekers = await self.get_searching_seekers_by_provider(self.user.id, category_code)
 
         for seeker in searching_seekers:
             distance = calculate_distance(
@@ -134,14 +129,14 @@ class LocationConsumer(AsyncWebsocketConsumer):
                     }
                 )
 
-    async def notify_seekers_about_provider_offline(self, category_name, category_code=None):
+    async def notify_seekers_about_provider_offline(self, category_code):
         """Notify seekers when a provider goes offline"""
         provider_status = await self.get_provider_status(self.user.id)
 
         if not provider_status:
             return
 
-        searching_seekers = await self.get_searching_seekers_by_provider(self.user.id, category_name, category_code)
+        searching_seekers = await self.get_searching_seekers_by_provider(self.user.id, category_code)
 
         for seeker in searching_seekers:
             await self.channel_layer.group_send(
@@ -187,14 +182,10 @@ class LocationConsumer(AsyncWebsocketConsumer):
             return None
 
     @database_sync_to_async
-    def get_searching_seekers_by_provider(self, provider_user_id, category_name=None, category_code=None):
+    def get_searching_seekers_by_provider(self, provider_user_id, category_code):
         """Get all seekers searching for subcategories that this provider has"""
         try:
-            # Use code if provided, otherwise fallback to name
-            if category_code:
-                category = WorkCategory.objects.get(category_code=category_code, is_active=True)
-            else:
-                category = WorkCategory.objects.get(name=category_name, is_active=True)
+            category = WorkCategory.objects.get(category_code=category_code, is_active=True)
 
             # Get provider's subcategories
             provider_subcategories = UserWorkSubCategory.objects.filter(
@@ -221,24 +212,15 @@ class LocationConsumer(AsyncWebsocketConsumer):
             return []
 
     @database_sync_to_async
-    def get_nearby_providers(self, seeker_lat, seeker_lng, radius, category_name=None, subcategory_name=None, category_id=None, subcategory_id=None):
+    def get_nearby_providers(self, seeker_lat, seeker_lng, radius, category_code, subcategory_code):
         """Get nearby active providers for a seeker's specific subcategory"""
         try:
-            # Use IDs if provided, otherwise fallback to names
-            if category_id and subcategory_id:
-                category = WorkCategory.objects.get(id=category_id, is_active=True)
-                subcategory = WorkSubCategory.objects.get(
-                    id=subcategory_id,
-                    category=category,
-                    is_active=True
-                )
-            else:
-                category = WorkCategory.objects.get(name=category_name, is_active=True)
-                subcategory = WorkSubCategory.objects.get(
-                    name=subcategory_name,
-                    category=category,
-                    is_active=True
-                )
+            category = WorkCategory.objects.get(category_code=category_code, is_active=True)
+            subcategory = WorkSubCategory.objects.get(
+                subcategory_code=subcategory_code,
+                category=category,
+                is_active=True
+            )
 
             # Get providers who are active and have this subcategory in their skills
             # First get user IDs who have this subcategory skill
