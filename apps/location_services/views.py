@@ -267,16 +267,12 @@ def seeker_search_toggle(request, version=None):
         # Find nearby active providers if searching is enabled
         nearby_providers = []
         if searching:
-            logger.info(f"Searching for providers in category {main_category.category_code}, subcategory {sub_category.subcategory_code}")
-
             # Get providers who are active and have the searched subcategory in their skills
             # First get user IDs who have this subcategory skill
             user_ids_with_subcategory = UserWorkSubCategory.objects.filter(
                 sub_category=sub_category,
                 user_work_selection__main_category=main_category
             ).values_list('user_work_selection__user__user__id', flat=True)
-
-            logger.info(f"Found {len(user_ids_with_subcategory)} users with subcategory skills: {list(user_ids_with_subcategory)}")
 
             active_providers = ProviderActiveStatus.objects.filter(
                 is_active=True,
@@ -286,56 +282,44 @@ def seeker_search_toggle(request, version=None):
                 user_id__in=user_ids_with_subcategory
             ).select_related('user__profile')
 
-            logger.info(f"Found {active_providers.count()} active providers with location data")
-
             for provider in active_providers:
                 distance = calculate_distance(
                     latitude, longitude,
                     provider.latitude, provider.longitude
                 )
 
-                logger.info(f"Provider {provider.user.id} at ({provider.latitude}, {provider.longitude}) - Distance: {distance:.2f}km vs radius: {distance_radius}km")
 
                 if distance <= distance_radius:
-                    # Get portfolio images safely
+                    # Temporarily disable portfolio images to isolate the issue
                     portfolio_images = []
+
                     try:
-                        # Use direct query to avoid potential prefetch issues
-                        work_selection = UserWorkSelection.objects.filter(
-                            user=provider.user.profile
-                        ).first()
-
-                        if work_selection:
-                            portfolio_images_objs = WorkPortfolioImage.objects.filter(
-                                user_work_selection=work_selection
-                            ).order_by('image_order')
-
-                            portfolio_images = [img.image.url for img in portfolio_images_objs]
-                    except Exception:
-                        # If there's any error getting portfolio images, continue with empty list
-                        portfolio_images = []
-
-                    nearby_providers.append({
-                        'provider_id': provider.user.profile.provider_id,
-                        'name': provider.user.profile.full_name,
-                        'rating': 0,  # Default rating as requested
-                        'description': provider.user.profile.bio or "",  # From UserProfile.bio
-                        'is_verified': False,  # Default false as requested
-                        'images': portfolio_images,  # Portfolio images array
-                        'subcategory': {
-                            'code': sub_category.subcategory_code,
-                            'name': sub_category.display_name
-                        },
-                        'distance_km': round(distance, 2),
-                        'location': {
-                            'latitude': provider.latitude,
-                            'longitude': provider.longitude
+                        # Safe access to provider profile
+                        profile = provider.user.profile
+                        provider_data = {
+                            'provider_id': getattr(profile, 'provider_id', f'P{provider.user.id}'),
+                            'name': getattr(profile, 'full_name', 'Unknown'),
+                            'rating': 0,  # Default rating as requested
+                            'description': getattr(profile, 'bio', '') or "",  # From UserProfile.bio
+                            'is_verified': False,  # Default false as requested
+                            'images': portfolio_images,  # Portfolio images array
+                            'subcategory': {
+                                'code': sub_category.subcategory_code,
+                                'name': sub_category.display_name
+                            },
+                            'distance_km': round(distance, 2),
+                            'location': {
+                                'latitude': provider.latitude,
+                                'longitude': provider.longitude
+                            }
                         }
-                    })
+                        nearby_providers.append(provider_data)
+                    except Exception as e:
+                        logger.error(f"Error processing provider {provider.user.id}: {str(e)}")
+                        continue
 
             # Sort by distance
             nearby_providers.sort(key=lambda x: x['distance_km'])
-            logger.info(f"Final result: Found {len(nearby_providers)} nearby providers within {distance_radius}km")
 
         return Response({
             "status": "success",
