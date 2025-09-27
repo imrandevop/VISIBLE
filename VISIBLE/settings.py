@@ -25,6 +25,10 @@ CSRF_TRUSTED_ORIGINS = [
     'http://127.0.0.1',
 ]
 
+# Temporary fix for admin CSRF issues
+CSRF_COOKIE_HTTPONLY = False
+CSRF_USE_SESSIONS = False
+
 # Custom User Model
 AUTH_USER_MODEL = 'authentication.User'
 
