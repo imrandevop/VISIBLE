@@ -78,26 +78,36 @@ WebSocket Message Examples:
 
 class LocationConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        self.user_type = self.scope['url_route']['kwargs']['user_type']
-        self.user = self.scope["user"]
+        try:
+            self.user_type = self.scope['url_route']['kwargs']['user_type']
+            self.user = self.scope["user"]
 
-        if isinstance(self.user, AnonymousUser):
-            await self.close()
-            return
+            logger.info(f"WebSocket connection attempt - User: {self.user}, Type: {self.user_type}, Is Anonymous: {isinstance(self.user, AnonymousUser)}")
 
-        # Create user-specific group
-        self.user_group_name = f'user_{self.user.id}_{self.user_type}'
+            if isinstance(self.user, AnonymousUser):
+                logger.warning(f"WebSocket connection rejected - Anonymous user")
+                await self.close(code=4001)
+                return
 
-        # Join user group
-        await self.channel_layer.group_add(
-            self.user_group_name,
-            self.channel_name
-        )
+            # Create user-specific group
+            self.user_group_name = f'user_{self.user.id}_{self.user_type}'
 
-        # If provider, join category-based groups when they go active
-        # If seeker, join search groups when they start searching
+            # Join user group
+            await self.channel_layer.group_add(
+                self.user_group_name,
+                self.channel_name
+            )
 
-        await self.accept()
+            logger.info(f"WebSocket connected successfully for user {self.user.id} ({self.user_type})")
+            await self.accept()
+
+        except Exception as e:
+            logger.error(f"WebSocket connection error: {str(e)}")
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error': f'Connection failed: {str(e)}'
+            }))
+            await self.close(code=4000)
 
     async def disconnect(self, close_code):
         # Leave user group
@@ -108,8 +118,34 @@ class LocationConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         try:
+            # Check if user and user_type are properly initialized
+            if not hasattr(self, 'user') or not hasattr(self, 'user_type'):
+                logger.error(f"WebSocket consumer not properly initialized")
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'error': 'WebSocket connection not properly initialized'
+                }))
+                return
+
+            if isinstance(self.user, AnonymousUser):
+                logger.error(f"Anonymous user trying to send message")
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'error': 'Authentication required'
+                }))
+                return
+
+            logger.info(f"WebSocket received message for user {self.user.id}: {text_data}")
+
+            # Handle empty or whitespace-only messages
+            if not text_data or not text_data.strip():
+                logger.warning(f"Empty message received from user {self.user.id}")
+                return
+
             text_data_json = json.loads(text_data)
             message_type = text_data_json.get('type')
+
+            logger.info(f"Processing message type: {message_type} for user {self.user.id}")
 
             if message_type == 'provider_status_update':
                 await self.handle_provider_status_update(text_data_json)
@@ -117,17 +153,38 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 await self.handle_seeker_search_update(text_data_json)
             elif message_type == 'update_distance_radius':
                 await self.handle_distance_radius_update(text_data_json)
+            elif message_type == 'ping':
+                # Health check ping
+                await self.send(text_data=json.dumps({
+                    'type': 'pong',
+                    'message': 'WebSocket connection is active'
+                }))
+            elif not message_type:
+                logger.warning(f"Message without type received from user {self.user.id}")
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'error': 'Message type is required'
+                }))
+            else:
+                logger.warning(f"Unknown message type '{message_type}' received from user {self.user.id}")
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'error': f'Unknown message type: {message_type}'
+                }))
 
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            user_id = getattr(self, 'user', {}).get('id', 'unknown') if hasattr(self, 'user') else 'unknown'
+            logger.error(f"JSON decode error for user {user_id}: {str(e)}, data: {text_data}")
             await self.send(text_data=json.dumps({
                 'type': 'error',
                 'error': 'Invalid JSON format'
             }))
         except Exception as e:
-            logger.error(f"WebSocket error for user {self.user.id}: {str(e)}")
+            user_id = getattr(self, 'user', {}).get('id', 'unknown') if hasattr(self, 'user') else 'unknown'
+            logger.error(f"WebSocket error for user {user_id}: {str(e)}, data: {text_data}", exc_info=True)
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'error': 'An unexpected error occurred'
+                'error': f'An unexpected error occurred: {str(e)}'
             }))
 
     async def handle_provider_status_update(self, data):
