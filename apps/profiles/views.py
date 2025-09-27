@@ -205,45 +205,104 @@ def get_profile_api(request, version=None):
 def check_profile_status_api(request, version=None):
     """
     Check if user's profile is complete and can access app
-    
+
     GET /api/1/profiles/status/
-    
+
     Headers:
         Authorization: Bearer <jwt_token>
-    
+
     Response:
+        For Provider:
         {
             "status": "success",
             "profile_complete": true,
             "can_access_app": true,
             "user_type": "provider",
-            "next_action": "proceed_to_app" // or "complete_profile"
+            "next_action": "proceed_to_app",
+            "main_category": {
+                "code": "MS0001",
+                "name": "WORKER"
+            },
+            "sub_category": {
+                "code": "SS0006",
+                "name": "Beautician"
+            }
+        }
+
+        For Seeker:
+        {
+            "status": "success",
+            "profile_complete": true,
+            "can_access_app": true,
+            "user_type": "seeker",
+            "next_action": "proceed_to_app"
         }
     """
     try:
+        from apps.work_categories.models import UserWorkSelection, UserWorkSubCategory
+
         try:
             profile = UserProfile.objects.get(user=request.user)
             profile.check_profile_completion()  # Update completion status
-            
+
             next_action = "proceed_to_app" if profile.can_access_app else "complete_profile"
-            
-            return Response({
+
+            response_data = {
                 "status": "success",
                 "profile_complete": profile.profile_complete,
                 "can_access_app": profile.can_access_app,
                 "user_type": profile.user_type,
                 "next_action": next_action
-            }, status=status.HTTP_200_OK)
-            
+            }
+
+            # Add category information for providers only
+            if profile.user_type == 'provider':
+                try:
+                    work_selection = UserWorkSelection.objects.get(user=profile)
+
+                    # Add main category
+                    if work_selection.main_category:
+                        response_data["main_category"] = {
+                            "code": work_selection.main_category.category_code,
+                            "name": work_selection.main_category.display_name
+                        }
+                    else:
+                        response_data["main_category"] = None
+
+                    # Add sub categories (providers can have multiple, get first one)
+                    sub_categories = UserWorkSubCategory.objects.filter(
+                        user_work_selection=work_selection
+                    ).first()
+
+                    if sub_categories and sub_categories.sub_category:
+                        response_data["sub_category"] = {
+                            "code": sub_categories.sub_category.subcategory_code,
+                            "name": sub_categories.sub_category.display_name
+                        }
+                    else:
+                        response_data["sub_category"] = None
+
+                except UserWorkSelection.DoesNotExist:
+                    # No work selection set yet
+                    response_data["main_category"] = None
+                    response_data["sub_category"] = None
+
+            return Response(response_data, status=status.HTTP_200_OK)
+
         except UserProfile.DoesNotExist:
-            return Response({
+            response_data = {
                 "status": "success",
                 "profile_complete": False,
                 "can_access_app": False,
                 "user_type": None,
                 "next_action": "complete_profile"
-            }, status=status.HTTP_200_OK)
-    
+            }
+
+            # For users without profiles, we don't know if they're seekers yet
+            # So we don't include category fields
+
+            return Response(response_data, status=status.HTTP_200_OK)
+
     except Exception as e:
         return Response({
             "status": "error",
