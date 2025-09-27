@@ -17,6 +17,14 @@ DEBUG = True  # Temporarily force debug mode
 
 ALLOWED_HOSTS = ['api.visibleapp.in','workflow-z7zt.onrender.com', 'localhost', '127.0.0.1', '143.110.178.190']
 
+# CSRF trusted origins for HTTPS
+CSRF_TRUSTED_ORIGINS = [
+    'https://api.visibleapp.in',
+    'https://workflow-z7zt.onrender.com',
+    'http://localhost',
+    'http://127.0.0.1',
+]
+
 # Custom User Model
 AUTH_USER_MODEL = 'authentication.User'
 
