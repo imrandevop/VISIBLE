@@ -114,10 +114,11 @@ def verify_otp_api(request, version=None):
         if result["status"] == "success":
             # OTP verified, now create or get user
             from apps.authentication.models import User
-            
+            from apps.profiles.models import UserProfile
+
             # Clean mobile number for database
             clean_mobile = otp_service.clean_mobile_number(mobile_number)
-            
+
             try:
                 # Try to get existing user or create new one
                 user, created = User.objects.get_or_create(
@@ -127,14 +128,39 @@ def verify_otp_api(request, version=None):
                         'is_mobile_verified': True,
                     }
                 )
-                
+
                 # If user already exists, just mark as verified
                 if not created:
                     user.is_mobile_verified = True
                     user.save()
-                
-                # Create JWT response
-                jwt_response = create_jwt_response(user, is_new_user=created)
+
+                # Check if user has profile and get profile data
+                try:
+                    user_profile = UserProfile.objects.get(user=user)
+                    # Update profile completion status
+                    user_profile.check_profile_completion()
+                    profile_exists = True
+                    profile_complete = user_profile.profile_complete
+                    can_access_app = user_profile.can_access_app
+                    user_type = user_profile.user_type
+                    next_action = "proceed_to_app" if profile_complete else "complete_profile"
+                except UserProfile.DoesNotExist:
+                    # No profile exists - new user
+                    profile_exists = False
+                    profile_complete = False
+                    can_access_app = False
+                    user_type = None
+                    next_action = "complete_profile"
+
+                # Create JWT response with profile data
+                jwt_response = create_jwt_response(
+                    user,
+                    is_new_user=created,
+                    profile_complete=profile_complete,
+                    can_access_app=can_access_app,
+                    user_type=user_type,
+                    next_action=next_action
+                )
                 return Response(jwt_response, status=status.HTTP_200_OK)
                 
             except Exception as db_error:

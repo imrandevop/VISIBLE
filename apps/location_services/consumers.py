@@ -10,6 +10,71 @@ from apps.work_categories.models import WorkCategory, WorkSubCategory, UserWorkS
 
 logger = logging.getLogger(__name__)
 
+"""
+WebSocket Message Examples:
+
+1. Provider WebSocket Message (Updated):
+{
+    "type": "provider_status_update",
+    "active": true,
+    "category_code": "MS0001",
+    "subcategory_code": "SS0001"
+}
+
+2. Seeker Search Update Message:
+{
+    "type": "seeker_search_update",
+    "searching": true,
+    "latitude": 11.2588,
+    "longitude": 75.8577,
+    "category_code": "MS0001",
+    "subcategory_code": "SS0001",
+    "distance_radius": 5
+}
+
+3. New Provider Available Notification (Updated):
+{
+    "type": "new_provider_available",
+    "provider": {
+        "provider_id": "P123",
+        "name": "John Smith",
+        "main_category": {
+            "code": "MS0001",
+            "name": "Maintenance Services"
+        },
+        "subcategory": {
+            "code": "SS0001",
+            "name": "Plumbing"
+        },
+        "all_subcategories": [
+            {"code": "SS0001", "name": "Plumbing"},
+            {"code": "SS0002", "name": "Electrical"},
+            {"code": "SS0003", "name": "Carpentry"}
+        ],
+        "distance_km": 2.5,
+        "location": {
+            "latitude": 11.2588,
+            "longitude": 75.8577
+        }
+    }
+}
+
+4. Provider Went Offline Notification (Updated):
+{
+    "type": "provider_went_offline",
+    "provider_id": "P123",
+    "main_category": {
+        "code": "MS0001",
+        "name": "Maintenance Services"
+    },
+    "all_subcategories": [
+        {"code": "SS0001", "name": "Plumbing"},
+        {"code": "SS0002", "name": "Electrical"},
+        {"code": "SS0003", "name": "Carpentry"}
+    ]
+}
+"""
+
 
 class LocationConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -72,13 +137,14 @@ class LocationConsumer(AsyncWebsocketConsumer):
 
         active = data.get('active', False)
         category_code = data.get('category_code', '')
+        subcategory_code = data.get('subcategory_code', '')
 
         if active:
             # Notify seekers in the same category who are currently searching
-            await self.notify_nearby_seekers_about_new_provider(category_code)
+            await self.notify_nearby_seekers_about_new_provider(category_code, subcategory_code)
         else:
             # Notify seekers that this provider went offline
-            await self.notify_seekers_about_provider_offline(category_code)
+            await self.notify_seekers_about_provider_offline(category_code, subcategory_code)
 
     async def handle_seeker_search_update(self, data):
         """Handle seeker starting/stopping search"""
@@ -91,7 +157,7 @@ class LocationConsumer(AsyncWebsocketConsumer):
 
         if searching:
             # Send current nearby providers
-            nearby_providers = await self.get_nearby_providers(
+            nearby_providers = await self.get_nearby_providers_enhanced(
                 data.get('latitude'),
                 data.get('longitude'),
                 data.get('distance_radius', 5),
@@ -186,9 +252,9 @@ class LocationConsumer(AsyncWebsocketConsumer):
             'providers': nearby_providers
         }))
 
-    async def notify_nearby_seekers_about_new_provider(self, category_code):
+    async def notify_nearby_seekers_about_new_provider(self, category_code, subcategory_code=None):
         """Notify seekers when a new provider comes online"""
-        provider_status = await self.get_provider_status(self.user.id)
+        provider_status = await self.get_provider_status_enhanced(self.user.id)
 
         if not provider_status:
             return
@@ -211,10 +277,15 @@ class LocationConsumer(AsyncWebsocketConsumer):
                         'provider': {
                             'provider_id': provider_status['provider_id'],
                             'name': provider_status['name'],
+                            'main_category': {
+                                'code': provider_status['main_category_code'],
+                                'name': provider_status['main_category_name']
+                            },
                             'subcategory': {
                                 'code': seeker['searching_subcategory_code'],
                                 'name': seeker['searching_subcategory_name']
                             },
+                            'all_subcategories': provider_status['all_subcategories'],
                             'distance_km': round(distance, 2),
                             'location': {
                                 'latitude': provider_status['latitude'],
@@ -224,9 +295,9 @@ class LocationConsumer(AsyncWebsocketConsumer):
                     }
                 )
 
-    async def notify_seekers_about_provider_offline(self, category_code):
+    async def notify_seekers_about_provider_offline(self, category_code, subcategory_code=None):
         """Notify seekers when a provider goes offline"""
-        provider_status = await self.get_provider_status(self.user.id)
+        provider_status = await self.get_provider_status_enhanced(self.user.id)
 
         if not provider_status:
             return
@@ -238,7 +309,12 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 f'user_{seeker["user_id"]}_seeker',
                 {
                     'type': 'provider_went_offline',
-                    'provider_id': provider_status['provider_id']
+                    'provider_id': provider_status['provider_id'],
+                    'main_category': {
+                        'code': provider_status['main_category_code'],
+                        'name': provider_status['main_category_name']
+                    },
+                    'all_subcategories': provider_status['all_subcategories']
                 }
             )
 
@@ -254,7 +330,9 @@ class LocationConsumer(AsyncWebsocketConsumer):
         """Send provider offline notification to seeker"""
         await self.send(text_data=json.dumps({
             'type': 'provider_went_offline',
-            'provider_id': event['provider_id']
+            'provider_id': event['provider_id'],
+            'main_category': event.get('main_category', {}),
+            'all_subcategories': event.get('all_subcategories', [])
         }))
 
     # Database queries (async)
@@ -270,6 +348,44 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 'provider_id': provider_status.user.profile.provider_id,
                 'name': provider_status.user.profile.full_name,
                 'subcategory': provider_status.sub_category.display_name,
+                'latitude': provider_status.latitude,
+                'longitude': provider_status.longitude
+            }
+        except ProviderActiveStatus.DoesNotExist:
+            return None
+
+    @database_sync_to_async
+    def get_provider_status_enhanced(self, user_id):
+        """Get enhanced provider status details with all subcategories"""
+        try:
+            provider_status = ProviderActiveStatus.objects.select_related(
+                'user__profile', 'sub_category', 'main_category'
+            ).get(user_id=user_id, is_active=True)
+
+            # Get all subcategories this provider offers
+            provider_subcategories = UserWorkSubCategory.objects.filter(
+                user_work_selection__user__user__id=user_id,
+                user_work_selection__main_category=provider_status.main_category
+            ).select_related('sub_category').values(
+                'sub_category__subcategory_code',
+                'sub_category__display_name'
+            )
+
+            all_subcategories = [
+                {
+                    'code': sub['sub_category__subcategory_code'],
+                    'name': sub['sub_category__display_name']
+                }
+                for sub in provider_subcategories
+            ]
+
+            return {
+                'provider_id': provider_status.user.profile.provider_id,
+                'name': provider_status.user.profile.full_name,
+                'main_category_code': provider_status.main_category.category_code,
+                'main_category_name': provider_status.main_category.name,
+                'subcategory': provider_status.sub_category.display_name,
+                'all_subcategories': all_subcategories,
                 'latitude': provider_status.latitude,
                 'longitude': provider_status.longitude
             }
