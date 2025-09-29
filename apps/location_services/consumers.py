@@ -447,26 +447,47 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 for sub in provider_subcategories
             ]
 
-            # Get portfolio images safely
+            # Get portfolio images from both sources
             portfolio_images = []
             try:
+                # Try work-specific portfolio images first
                 if hasattr(provider_status.user, 'profile') and hasattr(provider_status.user.profile, 'work_selection'):
                     work_selection = provider_status.user.profile.work_selection
                     if work_selection:
-                        portfolio_images = [
+                        work_portfolio_images = [
                             img.image.url for img in work_selection.portfolio_images.all()
                         ]
+                        portfolio_images.extend(work_portfolio_images)
+
+                # Also get general service portfolio images
+                if hasattr(provider_status.user, 'profile'):
+                    service_portfolio_images = [
+                        img.image.url for img in provider_status.user.profile.service_portfolio_images.all()
+                    ]
+                    portfolio_images.extend(service_portfolio_images)
+
             except Exception as e:
                 logger.warning(f"Error getting portfolio images for provider {user_id}: {str(e)}")
                 portfolio_images = []
+
+            # Get description from skills or other available fields
+            description = ""
+            try:
+                if hasattr(provider_status.user, 'profile') and hasattr(provider_status.user.profile, 'work_selection'):
+                    work_selection = provider_status.user.profile.work_selection
+                    if work_selection and work_selection.skills:
+                        description = work_selection.skills
+            except Exception as e:
+                logger.warning(f"Error getting description for provider {user_id}: {str(e)}")
+                description = ""
 
             return {
                 'provider_id': provider_status.user.profile.provider_id,
                 'name': provider_status.user.profile.full_name,
                 'rating': 0,  # Default rating as requested
-                'description': provider_status.user.profile.bio or "",  # From UserProfile.bio
+                'description': description,  # From UserWorkSelection.skills
                 'is_verified': False,  # Default false as requested
-                'images': portfolio_images,  # Portfolio images array
+                'images': portfolio_images,  # Portfolio images array from both sources
                 'main_category_code': provider_status.main_category.category_code,
                 'main_category_name': provider_status.main_category.name,
                 'subcategory': provider_status.sub_category.display_name,

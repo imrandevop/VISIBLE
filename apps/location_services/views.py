@@ -290,8 +290,39 @@ def seeker_search_toggle(request, version=None):
 
 
                 if distance <= distance_radius:
-                    # Temporarily disable portfolio images to isolate the issue
+                    # Get portfolio images from both sources
                     portfolio_images = []
+                    try:
+                        # Try work-specific portfolio images first
+                        if hasattr(provider.user, 'profile') and hasattr(provider.user.profile, 'work_selection'):
+                            work_selection = provider.user.profile.work_selection
+                            if work_selection:
+                                work_portfolio_images = [
+                                    img.image.url for img in work_selection.portfolio_images.all()
+                                ]
+                                portfolio_images.extend(work_portfolio_images)
+
+                        # Also get general service portfolio images
+                        if hasattr(provider.user, 'profile'):
+                            service_portfolio_images = [
+                                img.image.url for img in provider.user.profile.service_portfolio_images.all()
+                            ]
+                            portfolio_images.extend(service_portfolio_images)
+
+                    except Exception as e:
+                        logger.error(f"Error getting portfolio images for provider {provider.user.id}: {str(e)}")
+                        portfolio_images = []
+
+                    # Get description from skills or other available fields
+                    description = ""
+                    try:
+                        if hasattr(provider.user, 'profile') and hasattr(provider.user.profile, 'work_selection'):
+                            work_selection = provider.user.profile.work_selection
+                            if work_selection and work_selection.skills:
+                                description = work_selection.skills
+                    except Exception as e:
+                        logger.error(f"Error getting description for provider {provider.user.id}: {str(e)}")
+                        description = ""
 
                     try:
                         # Safe access to provider profile
@@ -300,9 +331,9 @@ def seeker_search_toggle(request, version=None):
                             'provider_id': getattr(profile, 'provider_id', f'P{provider.user.id}'),
                             'name': getattr(profile, 'full_name', 'Unknown'),
                             'rating': 0,  # Default rating as requested
-                            'description': getattr(profile, 'bio', '') or "",  # From UserProfile.bio
+                            'description': description,  # From UserWorkSelection.skills
                             'is_verified': False,  # Default false as requested
-                            'images': portfolio_images,  # Portfolio images array
+                            'images': portfolio_images,  # Portfolio images array from both sources
                             'subcategory': {
                                 'code': sub_category.subcategory_code,
                                 'name': sub_category.display_name
