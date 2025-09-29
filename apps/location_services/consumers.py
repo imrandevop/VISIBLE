@@ -450,19 +450,31 @@ class LocationConsumer(AsyncWebsocketConsumer):
             # Get portfolio images from both sources
             portfolio_images = []
             try:
+                from django.conf import settings
+
+                # Determine base URL for images
+                if hasattr(settings, 'ALLOWED_HOSTS') and settings.ALLOWED_HOSTS:
+                    # Use the first production domain, fallback to localhost
+                    production_hosts = [host for host in settings.ALLOWED_HOSTS if host not in ['localhost', '127.0.0.1']]
+                    base_domain = production_hosts[0] if production_hosts else 'localhost:8000'
+                else:
+                    base_domain = 'localhost:8000'
+
+                base_url = f"https://{base_domain}" if base_domain != 'localhost:8000' else f"http://{base_domain}"
+
                 # Try work-specific portfolio images first
                 if hasattr(provider_status.user, 'profile') and hasattr(provider_status.user.profile, 'work_selection'):
                     work_selection = provider_status.user.profile.work_selection
                     if work_selection:
                         work_portfolio_images = [
-                            img.image.url for img in work_selection.portfolio_images.all()
+                            f"{base_url}{img.image.url}" for img in work_selection.portfolio_images.all()
                         ]
                         portfolio_images.extend(work_portfolio_images)
 
                 # Also get general service portfolio images
                 if hasattr(provider_status.user, 'profile'):
                     service_portfolio_images = [
-                        img.image.url for img in provider_status.user.profile.service_portfolio_images.all()
+                        f"{base_url}{img.image.url}" for img in provider_status.user.profile.service_portfolio_images.all()
                     ]
                     portfolio_images.extend(service_portfolio_images)
 
