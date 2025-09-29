@@ -365,9 +365,9 @@ class LocationConsumer(AsyncWebsocketConsumer):
 
     async def notify_seekers_about_provider_offline(self, category_code, subcategory_code=None):
         """Notify seekers when a provider goes offline"""
-        provider_status = await self.get_provider_status_enhanced(self.user.id)
+        provider_info = await self.get_provider_info_for_offline_notification(self.user.id, category_code)
 
-        if not provider_status:
+        if not provider_info:
             return
 
         searching_seekers = await self.get_searching_seekers_by_provider(self.user.id, category_code)
@@ -377,12 +377,12 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 f'user_{seeker["user_id"]}_seeker',
                 {
                     'type': 'provider_went_offline',
-                    'provider_id': provider_status['provider_id'],
+                    'provider_id': provider_info['provider_id'],
                     'main_category': {
-                        'code': provider_status['main_category_code'],
-                        'name': provider_status['main_category_name']
+                        'code': provider_info['main_category_code'],
+                        'name': provider_info['main_category_name']
                     },
-                    'all_subcategories': provider_status['all_subcategories']
+                    'all_subcategories': provider_info['all_subcategories']
                 }
             )
 
@@ -508,6 +508,44 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 'longitude': provider_status.longitude
             }
         except ProviderActiveStatus.DoesNotExist:
+            return None
+
+    @database_sync_to_async
+    def get_provider_info_for_offline_notification(self, user_id, category_code):
+        """Get provider info for offline notification (regardless of active status)"""
+        try:
+            # Get provider profile info
+            from apps.profiles.models import UserProfile
+            profile = UserProfile.objects.select_related('user').get(user_id=user_id)
+
+            # Get category info
+            category = WorkCategory.objects.get(category_code=category_code, is_active=True)
+
+            # Get all subcategories this provider offers
+            provider_subcategories = UserWorkSubCategory.objects.filter(
+                user_work_selection__user__user__id=user_id,
+                user_work_selection__main_category=category
+            ).select_related('sub_category').values(
+                'sub_category__subcategory_code',
+                'sub_category__display_name'
+            )
+
+            all_subcategories = [
+                {
+                    'code': sub['sub_category__subcategory_code'],
+                    'name': sub['sub_category__display_name']
+                }
+                for sub in provider_subcategories
+            ]
+
+            return {
+                'provider_id': profile.provider_id,
+                'name': profile.full_name,
+                'main_category_code': category.category_code,
+                'main_category_name': category.name,
+                'all_subcategories': all_subcategories
+            }
+        except (UserProfile.DoesNotExist, WorkCategory.DoesNotExist):
             return None
 
     @database_sync_to_async
