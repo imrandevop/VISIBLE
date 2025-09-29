@@ -38,6 +38,13 @@ WebSocket Message Examples:
     "provider": {
         "provider_id": "P123",
         "name": "John Smith",
+        "rating": 0,
+        "description": "Experienced plumber with 5+ years experience",
+        "is_verified": false,
+        "images": [
+            "/media/portfolio/image1.jpg",
+            "/media/portfolio/image2.jpg"
+        ],
         "main_category": {
             "code": "MS0001",
             "name": "Maintenance Services"
@@ -334,6 +341,10 @@ class LocationConsumer(AsyncWebsocketConsumer):
                         'provider': {
                             'provider_id': provider_status['provider_id'],
                             'name': provider_status['name'],
+                            'rating': provider_status.get('rating', 0),
+                            'description': provider_status.get('description', ''),
+                            'is_verified': provider_status.get('is_verified', False),
+                            'images': provider_status.get('images', []),
                             'main_category': {
                                 'code': provider_status['main_category_code'],
                                 'name': provider_status['main_category_name']
@@ -413,7 +424,7 @@ class LocationConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_provider_status_enhanced(self, user_id):
-        """Get enhanced provider status details with all subcategories"""
+        """Get enhanced provider status details with all subcategories and complete profile info"""
         try:
             provider_status = ProviderActiveStatus.objects.select_related(
                 'user__profile', 'sub_category', 'main_category'
@@ -436,9 +447,26 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 for sub in provider_subcategories
             ]
 
+            # Get portfolio images safely
+            portfolio_images = []
+            try:
+                if hasattr(provider_status.user, 'profile') and hasattr(provider_status.user.profile, 'work_selection'):
+                    work_selection = provider_status.user.profile.work_selection
+                    if work_selection:
+                        portfolio_images = [
+                            img.image.url for img in work_selection.portfolio_images.all()
+                        ]
+            except Exception as e:
+                logger.warning(f"Error getting portfolio images for provider {user_id}: {str(e)}")
+                portfolio_images = []
+
             return {
                 'provider_id': provider_status.user.profile.provider_id,
                 'name': provider_status.user.profile.full_name,
+                'rating': 0,  # Default rating as requested
+                'description': provider_status.user.profile.bio or "",  # From UserProfile.bio
+                'is_verified': False,  # Default false as requested
+                'images': portfolio_images,  # Portfolio images array
                 'main_category_code': provider_status.main_category.category_code,
                 'main_category_name': provider_status.main_category.name,
                 'subcategory': provider_status.sub_category.display_name,
