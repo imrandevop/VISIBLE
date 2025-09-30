@@ -51,6 +51,10 @@ class UserProfile(BaseModel):
     provider_id = models.CharField(max_length=10, unique=True, blank=True, null=True, help_text="Unique provider ID (2 letters + 8 digits)")
     profile_complete = models.BooleanField(default=False)
     can_access_app = models.BooleanField(default=False)
+
+    # FCM Token for push notifications
+    fcm_token = models.CharField(max_length=255, blank=True, null=True, help_text="Firebase Cloud Messaging token for push notifications")
+    is_active_for_work = models.BooleanField(default=False, help_text="Provider is actively available for work assignments")
     
     def __str__(self):
         return f"{self.full_name} ({self.user.mobile_number})"
@@ -262,3 +266,6 @@ class ServicePortfolioImage(BaseModel):
 
 # Import communication models
 from .communication_models import CommunicationSettings
+
+# Import work assignment models
+from .work_assignment_models import WorkOrder, WorkAssignmentNotification

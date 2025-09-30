@@ -221,6 +221,26 @@ SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 
+#!<------------------ Firebase Configuration ------------------>
+
+# Firebase Configuration for Push Notifications
+FIREBASE_CREDENTIALS_PATH = os.path.join(BASE_DIR, 'firebase_credentials.json')
+
+# Initialize Firebase Admin SDK
+try:
+    import firebase_admin
+    from firebase_admin import credentials
+
+    if os.path.exists(FIREBASE_CREDENTIALS_PATH):
+        cred = credentials.Certificate(FIREBASE_CREDENTIALS_PATH)
+        if not firebase_admin._apps:  # Only initialize if not already initialized
+            firebase_admin.initialize_app(cred)
+        print("Firebase Admin SDK initialized successfully")
+    else:
+        print("Warning: Firebase credentials not found at", FIREBASE_CREDENTIALS_PATH)
+except ImportError:
+    print("Warning: firebase-admin package not installed. Run: pip install firebase-admin")
+
 #!<------------------ Django Channels Configuration ------------------>
 
 # ASGI application
