@@ -7,7 +7,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('profiles', '0002_alter_user_groups_alter_user_user_permissions'),  # Replace with actual last migration
+        ('profiles', '0008_update_furnishing_choices'),
     ]
 
     operations = [
