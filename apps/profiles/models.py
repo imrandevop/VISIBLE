@@ -259,3 +259,6 @@ class ServicePortfolioImage(BaseModel):
     def __str__(self):
         return f"{self.user_profile.full_name} - Portfolio Image {self.image_order}"
 
+
+# Import communication models
+from .communication_models import CommunicationSettings

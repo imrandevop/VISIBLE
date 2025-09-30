@@ -243,7 +243,7 @@ try:
     # Test Redis connection
     r = redis.Redis.from_url(config('REDIS_URL', default='redis://127.0.0.1:6379'))
     r.ping()
-except (redis.ConnectionError, redis.ResponseError, ImportError):
+except Exception:
     # Fallback to in-memory channel layer if Redis is not available
     CHANNEL_LAYERS = {
         'default': {
