@@ -11,6 +11,16 @@ from apps.work_categories.models import WorkCategory, WorkSubCategory, UserWorkS
 logger = logging.getLogger(__name__)
 
 """
+WebSocket Connection URLs:
+
+Development:
+- Provider: ws://localhost:8000/ws/location/provider/
+- Seeker: ws://localhost:8000/ws/location/seeker/
+
+Production:
+- Provider: wss://api.visibleapp.in/ws/location/provider/
+- Seeker: wss://api.visibleapp.in/ws/location/seeker/
+
 WebSocket Message Examples:
 
 1. Provider WebSocket Message (Updated):

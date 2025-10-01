@@ -1,4 +1,15 @@
 # apps/profiles/work_assignment_consumers.py
+"""
+WebSocket Connection URLs:
+
+Development:
+- Provider: ws://localhost:8000/ws/work/provider/
+- Seeker: ws://localhost:8000/ws/work/seeker/
+
+Production:
+- Provider: wss://api.visibleapp.in/ws/work/provider/
+- Seeker: wss://api.visibleapp.in/ws/work/seeker/
+"""
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
