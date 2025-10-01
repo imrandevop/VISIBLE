@@ -121,27 +121,11 @@ def provider_toggle_status(request, version=None):
             from asgiref.sync import async_to_sync
 
             channel_layer = get_channel_layer()
-            if channel_layer:
-                if active:
-                    # Provider went online - notify seekers
-                    async_to_sync(channel_layer.group_send)(
-                        'location_updates',
-                        {
-                            'type': 'notify_seekers_new_provider',
-                            'user_id': request.user.id,
-                            'category_code': provider_category_code
-                        }
-                    )
-                else:
-                    # Provider went offline - notify seekers
-                    async_to_sync(channel_layer.group_send)(
-                        'location_updates',
-                        {
-                            'type': 'notify_seekers_provider_offline',
-                            'user_id': request.user.id,
-                            'category_code': provider_category_code
-                        }
-                    )
+            if channel_layer and active:
+                # Provider went online - trigger immediate notification to nearby seekers
+                async_to_sync(notify_seekers_about_provider_status_change)(
+                    request.user.id, provider_category_code, provider_subcategory_code, True
+                )
         except Exception as e:
             logger.warning(f"Failed to send WebSocket notification: {str(e)}")
 
@@ -357,6 +341,84 @@ def seeker_search_toggle(request, version=None):
         return Response({
             "error": "An unexpected server error occurred. Please try again."
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+async def notify_seekers_about_provider_status_change(provider_user_id, category_code, subcategory_code, is_online):
+    """Notify nearby seekers when a provider changes status"""
+    try:
+        from channels.layers import get_channel_layer
+        from apps.core.models import SeekerSearchPreference, ProviderActiveStatus, calculate_distance
+        from apps.work_categories.models import WorkCategory, WorkSubCategory
+
+        # Get provider's current location and details
+        try:
+            provider_status = ProviderActiveStatus.objects.select_related(
+                'user__profile', 'main_category', 'sub_category'
+            ).get(user_id=provider_user_id, is_active=True)
+        except ProviderActiveStatus.DoesNotExist:
+            return
+
+        # Get category and subcategory objects
+        try:
+            category = WorkCategory.objects.get(category_code=category_code, is_active=True)
+            subcategory = WorkSubCategory.objects.get(
+                subcategory_code=subcategory_code, category=category, is_active=True
+            )
+        except (WorkCategory.DoesNotExist, WorkSubCategory.DoesNotExist):
+            return
+
+        # Find seekers actively searching for this category/subcategory
+        searching_seekers = SeekerSearchPreference.objects.filter(
+            is_searching=True,
+            searching_category_code=category_code,
+            searching_subcategory_code=subcategory_code
+        ).select_related('user')
+
+        channel_layer = get_channel_layer()
+
+        for seeker_pref in searching_seekers:
+            # Calculate distance between seeker and provider
+            distance = calculate_distance(
+                seeker_pref.latitude, seeker_pref.longitude,
+                provider_status.latitude, provider_status.longitude
+            )
+
+            # Only notify if provider is within seeker's search radius
+            if distance <= seeker_pref.distance_radius:
+                if is_online:
+                    # Provider came online - send new provider notification
+                    provider_data = get_complete_provider_data(
+                        provider_status.user.profile,
+                        subcategory,
+                        distance,
+                        provider_status.latitude,
+                        provider_status.longitude
+                    )
+
+                    if provider_data:
+                        await channel_layer.group_send(
+                            f'user_{seeker_pref.user.id}_seeker',
+                            {
+                                'type': 'new_provider_available',
+                                'provider': provider_data
+                            }
+                        )
+                else:
+                    # Provider went offline - send offline notification
+                    await channel_layer.group_send(
+                        f'user_{seeker_pref.user.id}_seeker',
+                        {
+                            'type': 'provider_went_offline',
+                            'provider_id': provider_status.user.profile.provider_id,
+                            'main_category': {
+                                'code': category.category_code,
+                                'name': category.display_name
+                            }
+                        }
+                    )
+
+    except Exception as e:
+        logger.error(f"Error notifying seekers about provider status change: {str(e)}")
 
 
 def get_mock_rating_data():

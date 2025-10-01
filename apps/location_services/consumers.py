@@ -105,11 +105,6 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 self.channel_name
             )
 
-            # Also join location updates group to receive provider status notifications
-            await self.channel_layer.group_add(
-                'location_updates',
-                self.channel_name
-            )
 
             logger.info(f"WebSocket connected successfully for user {self.user.id} ({self.user_type})")
             await self.accept()
@@ -129,11 +124,6 @@ class LocationConsumer(AsyncWebsocketConsumer):
             self.channel_name
         )
 
-        # Leave location updates group
-        await self.channel_layer.group_discard(
-            'location_updates',
-            self.channel_name
-        )
 
     async def receive(self, text_data):
         try:
@@ -402,19 +392,6 @@ class LocationConsumer(AsyncWebsocketConsumer):
             'all_subcategories': event.get('all_subcategories', [])
         }))
 
-    async def notify_seekers_new_provider(self, event):
-        """Handle WebSocket notification for new provider coming online"""
-        user_id = event['user_id']
-        category_code = event['category_code']
-
-        await self.notify_nearby_seekers_about_new_provider(category_code)
-
-    async def notify_seekers_provider_offline(self, event):
-        """Handle WebSocket notification for provider going offline"""
-        user_id = event['user_id']
-        category_code = event['category_code']
-
-        await self.notify_seekers_about_provider_offline(category_code)
 
     # Database queries (async)
     @database_sync_to_async
