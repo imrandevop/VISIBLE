@@ -115,6 +115,36 @@ def provider_toggle_status(request, version=None):
                 provider_status.sub_category = sub_category
                 provider_status.save()
 
+        # Notify nearby seekers about provider status change via WebSocket
+        try:
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+
+            channel_layer = get_channel_layer()
+            if channel_layer:
+                if active:
+                    # Provider went online - notify seekers
+                    async_to_sync(channel_layer.group_send)(
+                        'location_updates',
+                        {
+                            'type': 'notify_seekers_new_provider',
+                            'user_id': request.user.id,
+                            'category_code': provider_category_code
+                        }
+                    )
+                else:
+                    # Provider went offline - notify seekers
+                    async_to_sync(channel_layer.group_send)(
+                        'location_updates',
+                        {
+                            'type': 'notify_seekers_provider_offline',
+                            'user_id': request.user.id,
+                            'category_code': provider_category_code
+                        }
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to send WebSocket notification: {str(e)}")
+
         return Response({
             "status": "success",
             "active": provider_status.is_active,
