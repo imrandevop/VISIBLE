@@ -264,6 +264,78 @@ class ServicePortfolioImage(BaseModel):
         return f"{self.user_profile.full_name} - Portfolio Image {self.image_order}"
 
 
+class ProviderRating(BaseModel):
+    """Provider rating and review summary"""
+    provider = models.OneToOneField(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name='rating_summary',
+        limit_choices_to={'user_type': 'provider'}
+    )
+    average_rating = models.DecimalField(max_digits=3, decimal_places=2, default=0.00)
+    total_reviews = models.PositiveIntegerField(default=0)
+    five_star_count = models.PositiveIntegerField(default=0)
+    four_star_count = models.PositiveIntegerField(default=0)
+    three_star_count = models.PositiveIntegerField(default=0)
+    two_star_count = models.PositiveIntegerField(default=0)
+    one_star_count = models.PositiveIntegerField(default=0)
+
+    def __str__(self):
+        return f"{self.provider.full_name} - {self.average_rating}★ ({self.total_reviews} reviews)"
+
+    def get_formatted_total_reviews(self):
+        """Format total reviews count (472000 → '472K')"""
+        if self.total_reviews >= 1000000:
+            return f"{self.total_reviews / 1000000:.1f}M"
+        elif self.total_reviews >= 1000:
+            return f"{self.total_reviews // 1000}K"
+        else:
+            return str(self.total_reviews)
+
+    def get_rating_distribution(self):
+        """Get rating distribution with formatted counts"""
+        def format_count(count):
+            if count >= 1000000:
+                return f"{count / 1000000:.1f}M"
+            elif count >= 1000:
+                return f"{count // 1000}K"
+            else:
+                return str(count)
+
+        return {
+            "5_star": format_count(self.five_star_count),
+            "4_star": format_count(self.four_star_count),
+            "3_star": format_count(self.three_star_count),
+            "2_star": format_count(self.two_star_count),
+            "1_star": format_count(self.one_star_count)
+        }
+
+
+class ProviderReview(BaseModel):
+    """Individual provider reviews"""
+    provider = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name='reviews',
+        limit_choices_to={'user_type': 'provider'}
+    )
+    reviewer_name = models.CharField(max_length=100)
+    rating = models.PositiveIntegerField(choices=[(i, i) for i in range(1, 6)])  # 1-5 stars
+    review_text = models.TextField()
+    review_date = models.DateTimeField(auto_now_add=True)
+    is_verified = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-review_date']
+
+    def __str__(self):
+        return f"{self.reviewer_name} - {self.rating}★ for {self.provider.full_name}"
+
+    def get_formatted_date(self):
+        """Format date as 'Sep 27, 2025'"""
+        return self.review_date.strftime("%b %d, %Y")
+
+
 # Import communication models
 from .communication_models import CommunicationSettings
 

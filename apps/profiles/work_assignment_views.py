@@ -189,6 +189,7 @@ def assign_work(request, version=None):
                     'work_order_id': work_order.id,
                     'provider_name': provider_profile.full_name,
                     'provider_mobile': provider.mobile_number,
+                    'provider_rating': 4.88,  # Mock rating data
                     'service_type': service_type,
                     'fcm_sent': fcm_success,
                     'websocket_sent': websocket_success,
@@ -205,27 +206,82 @@ def assign_work(request, version=None):
 
 
 def send_websocket_notification(provider, work_order, seeker_profile):
-    """Send WebSocket notification to provider"""
+    """Send WebSocket notification to provider with complete seeker profile data"""
     try:
+        from django.conf import settings
+
+        # Build complete seeker profile data
+        seeker_data = build_complete_seeker_data(seeker_profile)
+
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
             f'provider_{provider.id}',
             {
                 'type': 'work_assignment',
                 'work_id': work_order.id,
-                'seeker_name': seeker_profile.full_name,
-                'seeker_mobile': work_order.seeker.mobile_number,
                 'service_type': work_order.service_type,
                 'distance': work_order.distance,
                 'message': work_order.message,
-                'seeker_profile_pic': '',  # Add profile picture URL if available
+                'seeker_latitude': float(work_order.seeker_latitude) if work_order.seeker_latitude else None,
+                'seeker_longitude': float(work_order.seeker_longitude) if work_order.seeker_longitude else None,
                 'created_at': work_order.created_at.isoformat(),
+                'seeker': seeker_data
             }
         )
         return True
     except Exception as e:
         logger.error(f"Error sending WebSocket notification: {e}")
         return False
+
+
+def build_complete_seeker_data(seeker_profile):
+    """Build complete seeker profile data"""
+    try:
+        from django.conf import settings
+
+        # Determine base URL for images
+        if hasattr(settings, 'ALLOWED_HOSTS') and settings.ALLOWED_HOSTS:
+            production_hosts = [host for host in settings.ALLOWED_HOSTS if host not in ['localhost', '127.0.0.1']]
+            base_domain = production_hosts[0] if production_hosts else 'localhost:8000'
+        else:
+            base_domain = 'localhost:8000'
+
+        base_url = f"https://{base_domain}" if base_domain != 'localhost:8000' else f"http://{base_domain}"
+
+        # Get profile photo URL
+        profile_photo = None
+        if seeker_profile.profile_photo:
+            profile_photo = f"{base_url}{seeker_profile.profile_photo.url}"
+
+        # Get languages as array
+        languages = []
+        if seeker_profile.languages:
+            languages = [lang.strip() for lang in seeker_profile.languages.split(',') if lang.strip()]
+
+        return {
+            'user_id': seeker_profile.user.id,
+            'name': seeker_profile.full_name,
+            'mobile_number': seeker_profile.user.mobile_number if seeker_profile.user else '',
+            'age': seeker_profile.age,
+            'gender': seeker_profile.gender,
+            'date_of_birth': seeker_profile.date_of_birth.isoformat() if seeker_profile.date_of_birth else None,
+            'profile_photo': profile_photo,
+            'languages': languages,
+            'user_type': seeker_profile.user_type,
+            'profile_complete': seeker_profile.profile_complete,
+            'can_access_app': seeker_profile.can_access_app,
+            'created_at': seeker_profile.created_at.isoformat() if seeker_profile.created_at else None
+        }
+    except Exception as e:
+        logger.error(f"Error building seeker data: {str(e)}")
+        return {
+            'user_id': seeker_profile.user.id if seeker_profile.user else None,
+            'name': getattr(seeker_profile, 'full_name', 'Unknown'),
+            'mobile_number': seeker_profile.user.mobile_number if seeker_profile.user else '',
+            'profile_photo': None,
+            'languages': [],
+            'user_type': getattr(seeker_profile, 'user_type', 'seeker')
+        }
 
 
 @api_view(['GET'])

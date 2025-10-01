@@ -290,73 +290,12 @@ def seeker_search_toggle(request, version=None):
 
 
                 if distance <= distance_radius:
-                    # Get portfolio images from both sources
-                    portfolio_images = []
                     try:
-                        from django.conf import settings
-
-                        # Determine base URL for images
-                        if hasattr(settings, 'ALLOWED_HOSTS') and settings.ALLOWED_HOSTS:
-                            # Use the first production domain, fallback to localhost
-                            production_hosts = [host for host in settings.ALLOWED_HOSTS if host not in ['localhost', '127.0.0.1']]
-                            base_domain = production_hosts[0] if production_hosts else 'localhost:8000'
-                        else:
-                            base_domain = 'localhost:8000'
-
-                        base_url = f"https://{base_domain}" if base_domain != 'localhost:8000' else f"http://{base_domain}"
-
-                        # Try work-specific portfolio images first
-                        if hasattr(provider.user, 'profile') and hasattr(provider.user.profile, 'work_selection'):
-                            work_selection = provider.user.profile.work_selection
-                            if work_selection:
-                                work_portfolio_images = [
-                                    f"{base_url}{img.image.url}" for img in work_selection.portfolio_images.all()
-                                ]
-                                portfolio_images.extend(work_portfolio_images)
-
-                        # Also get general service portfolio images
-                        if hasattr(provider.user, 'profile'):
-                            service_portfolio_images = [
-                                f"{base_url}{img.image.url}" for img in provider.user.profile.service_portfolio_images.all()
-                            ]
-                            portfolio_images.extend(service_portfolio_images)
-
-                    except Exception as e:
-                        logger.error(f"Error getting portfolio images for provider {provider.user.id}: {str(e)}")
-                        portfolio_images = []
-
-                    # Get description from skills or other available fields
-                    description = ""
-                    try:
-                        if hasattr(provider.user, 'profile') and hasattr(provider.user.profile, 'work_selection'):
-                            work_selection = provider.user.profile.work_selection
-                            if work_selection and work_selection.skills:
-                                description = work_selection.skills
-                    except Exception as e:
-                        logger.error(f"Error getting description for provider {provider.user.id}: {str(e)}")
-                        description = ""
-
-                    try:
-                        # Safe access to provider profile
+                        # Get complete provider profile data
                         profile = provider.user.profile
-                        provider_data = {
-                            'provider_id': getattr(profile, 'provider_id', f'P{provider.user.id}'),
-                            'name': getattr(profile, 'full_name', 'Unknown'),
-                            'rating': 0,  # Default rating as requested
-                            'description': description,  # From UserWorkSelection.skills
-                            'is_verified': False,  # Default false as requested
-                            'images': portfolio_images,  # Portfolio images array from both sources
-                            'subcategory': {
-                                'code': sub_category.subcategory_code,
-                                'name': sub_category.display_name
-                            },
-                            'distance_km': round(distance, 2),
-                            'location': {
-                                'latitude': provider.latitude,
-                                'longitude': provider.longitude
-                            }
-                        }
-                        nearby_providers.append(provider_data)
+                        provider_data = get_complete_provider_data(profile, sub_category, distance, provider.latitude, provider.longitude)
+                        if provider_data:
+                            nearby_providers.append(provider_data)
                     except Exception as e:
                         logger.error(f"Error processing provider {provider.user.id}: {str(e)}")
                         continue
@@ -388,3 +327,302 @@ def seeker_search_toggle(request, version=None):
         return Response({
             "error": "An unexpected server error occurred. Please try again."
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def get_mock_rating_data():
+    """Get mock rating data for testing (will be replaced with real data in future)"""
+    return {
+        "rating": 4.88,
+        "total_reviews": "472K",
+        "rating_distribution": {
+            "5_star": "450K",
+            "4_star": "10K",
+            "3_star": "4K",
+            "2_star": "3K",
+            "1_star": "5K"
+        },
+        "reviews": [
+            {
+                "user": "Amitabh",
+                "date": "Sep 27, 2025",
+                "rating": 5,
+                "review": "Ashik was very professional and cut my hair exactly how I wanted it. He even suggested a new style that fit me perfectly. Very pleased with his service and would highly recommend him. His equipment is professional."
+            },
+            {
+                "user": "Soumya Ray",
+                "date": "Sep 26, 2025",
+                "rating": 5,
+                "review": "On time. Very polite behaviour. He is neat and clean, he follows all my instructions as I like my hair and beard to be cut. No mess, he cleared up all the cut hairs."
+            }
+        ]
+    }
+
+
+def get_complete_provider_data(profile, subcategory, distance, provider_lat, provider_lng):
+    """Get complete provider data including all profile details"""
+    try:
+        from django.conf import settings
+
+        # Determine base URL for images
+        if hasattr(settings, 'ALLOWED_HOSTS') and settings.ALLOWED_HOSTS:
+            production_hosts = [host for host in settings.ALLOWED_HOSTS if host not in ['localhost', '127.0.0.1']]
+            base_domain = production_hosts[0] if production_hosts else 'localhost:8000'
+        else:
+            base_domain = 'localhost:8000'
+
+        base_url = f"https://{base_domain}" if base_domain != 'localhost:8000' else f"http://{base_domain}"
+
+        # Get portfolio images from both sources
+        portfolio_images = []
+        try:
+            # Work-specific portfolio images
+            if hasattr(profile, 'work_selection') and profile.work_selection:
+                work_portfolio_images = [
+                    f"{base_url}{img.image.url}" for img in profile.work_selection.portfolio_images.all()
+                ]
+                portfolio_images.extend(work_portfolio_images)
+
+            # General service portfolio images
+            service_portfolio_images = [
+                f"{base_url}{img.image.url}" for img in profile.service_portfolio_images.all()
+            ]
+            portfolio_images.extend(service_portfolio_images)
+        except Exception as e:
+            logger.error(f"Error getting portfolio images for provider {profile.user.id}: {str(e)}")
+            portfolio_images = []
+
+        # Get profile photo URL
+        profile_photo = None
+        if profile.profile_photo:
+            profile_photo = f"{base_url}{profile.profile_photo.url}"
+
+        # Get languages as array
+        languages = []
+        if profile.languages:
+            languages = [lang.strip() for lang in profile.languages.split(',') if lang.strip()]
+
+        # Get skills (subcategory names), description (actual skills text), and experience from work selection
+        skills = None  # Will be array of subcategory names
+        description = ""  # Will be actual skills description text
+        experience = 0
+        main_category_data = None
+        all_subcategories = []
+
+        if hasattr(profile, 'work_selection') and profile.work_selection:
+            work_selection = profile.work_selection
+            description = work_selection.skills or ""  # Actual skills description
+            experience = work_selection.years_experience or 0
+
+            if work_selection.main_category:
+                main_category_data = {
+                    'code': work_selection.main_category.category_code,
+                    'name': work_selection.main_category.display_name
+                }
+
+            # Get all subcategories this provider offers
+            subcategories_qs = work_selection.selected_subcategories.all()
+            all_subcategories = [
+                {
+                    'code': sub.sub_category.subcategory_code,
+                    'name': sub.sub_category.display_name
+                }
+                for sub in subcategories_qs
+            ]
+
+            # Skills = array of subcategory names
+            if all_subcategories:
+                skills = [sub['name'] for sub in all_subcategories]
+            else:
+                skills = None
+
+        # Get service-specific data based on provider type
+        service_specific_data = get_service_specific_data(profile)
+
+        # Get mock rating data (will be replaced with real data in future)
+        rating_data = get_mock_rating_data()
+
+        # Build complete provider data
+        provider_data = {
+            'provider_id': getattr(profile, 'provider_id', f'P{profile.user.id}'),
+            'name': getattr(profile, 'full_name', 'Unknown'),
+            'mobile_number': profile.user.mobile_number if profile.user else '',
+            'age': profile.age,
+            'gender': profile.gender,
+            'date_of_birth': profile.date_of_birth.isoformat() if profile.date_of_birth else None,
+            'profile_photo': profile_photo,
+            'languages': languages,
+            'skills': skills,
+            'description': description,
+            'years_experience': experience,
+            'user_type': profile.user_type,
+            'service_type': profile.service_type,
+            'rating': rating_data['rating'],
+            'total_reviews': rating_data['total_reviews'],
+            'rating_distribution': rating_data['rating_distribution'],
+            'reviews': rating_data['reviews'],
+            'is_verified': False,  # Default false
+            'images': portfolio_images,
+            'main_category': main_category_data,
+            'subcategory': {
+                'code': subcategory.subcategory_code,
+                'name': subcategory.display_name
+            },
+            'all_subcategories': all_subcategories,
+            'service_data': service_specific_data,
+            'distance_km': round(distance, 2),
+            'location': {
+                'latitude': provider_lat,
+                'longitude': provider_lng
+            },
+            'profile_complete': profile.profile_complete,
+            'can_access_app': profile.can_access_app,
+            'created_at': profile.created_at.isoformat() if profile.created_at else None
+        }
+
+        return provider_data
+
+    except Exception as e:
+        logger.error(f"Error building complete provider data for {profile.user.id}: {str(e)}")
+        return None
+
+
+def get_service_specific_data(profile):
+    """Get service-specific data based on provider type"""
+    if profile.user_type != 'provider' or not profile.service_type:
+        return None
+
+    try:
+        if profile.service_type == 'worker':
+            return get_worker_service_data(profile)
+        elif profile.service_type == 'driver':
+            return get_driver_service_data(profile)
+        elif profile.service_type == 'properties':
+            return get_property_service_data(profile)
+        elif profile.service_type == 'SOS':
+            return get_sos_service_data(profile)
+    except Exception as e:
+        logger.error(f"Error getting service data for provider {profile.user.id}: {str(e)}")
+        return None
+
+    return None
+
+
+def get_worker_service_data(profile):
+    """Get worker-specific service data"""
+    if hasattr(profile, 'work_selection') and profile.work_selection:
+        work_selection = profile.work_selection
+        subcategories = work_selection.selected_subcategories.all()
+
+        # Skills = array of subcategory names
+        skills = [sub.sub_category.display_name for sub in subcategories] if subcategories else None
+
+        return {
+            'main_category_id': work_selection.main_category.category_code if work_selection.main_category else None,
+            'main_category_name': work_selection.main_category.display_name if work_selection.main_category else None,
+            'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories],
+            'sub_category_names': [sub.sub_category.display_name for sub in subcategories],
+            'years_experience': work_selection.years_experience,
+            'skills': skills,
+            'description': work_selection.skills
+        }
+    return None
+
+
+def get_driver_service_data(profile):
+    """Get driver-specific service data"""
+    data = {}
+
+    # Get category data from work selection
+    if hasattr(profile, 'work_selection') and profile.work_selection:
+        work_selection = profile.work_selection
+        subcategories = work_selection.selected_subcategories.all()
+
+        # Skills = array of subcategory names
+        skills = [sub.sub_category.display_name for sub in subcategories] if subcategories else None
+
+        data.update({
+            'main_category_id': work_selection.main_category.category_code if work_selection.main_category else None,
+            'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories],
+            'years_experience': work_selection.years_experience,
+            'skills': skills,
+            'description': work_selection.skills
+        })
+
+    # Get driver-specific data
+    if hasattr(profile, 'driver_service') and profile.driver_service:
+        driver_data = profile.driver_service
+        data.update({
+            'vehicle_types': driver_data.vehicle_types.split(',') if driver_data.vehicle_types else [],
+            'license_number': driver_data.license_number,
+            'vehicle_registration_number': driver_data.vehicle_registration_number,
+            'driving_experience_description': driver_data.driving_experience_description
+        })
+
+    return data if data else None
+
+
+def get_property_service_data(profile):
+    """Get property-specific service data"""
+    data = {}
+
+    # Get category data from work selection
+    if hasattr(profile, 'work_selection') and profile.work_selection:
+        work_selection = profile.work_selection
+        subcategories = work_selection.selected_subcategories.all()
+
+        # Skills = array of subcategory names
+        skills = [sub.sub_category.display_name for sub in subcategories] if subcategories else None
+
+        data.update({
+            'main_category_id': work_selection.main_category.category_code if work_selection.main_category else None,
+            'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories],
+            'years_experience': work_selection.years_experience,
+            'skills': skills,
+            'description': work_selection.skills
+        })
+
+    # Get property-specific data
+    if hasattr(profile, 'property_service') and profile.property_service:
+        property_data = profile.property_service
+        data.update({
+            'property_types': property_data.property_types.split(',') if property_data.property_types else [],
+            'property_title': property_data.property_title,
+            'parking_availability': property_data.parking_availability,
+            'furnishing_type': property_data.furnishing_type,
+            'property_description': property_data.property_description
+        })
+
+    return data if data else None
+
+
+def get_sos_service_data(profile):
+    """Get SOS/Emergency-specific service data"""
+    data = {}
+
+    # Get category data from work selection
+    if hasattr(profile, 'work_selection') and profile.work_selection:
+        work_selection = profile.work_selection
+        subcategories = work_selection.selected_subcategories.all()
+
+        # Skills = array of subcategory names
+        skills = [sub.sub_category.display_name for sub in subcategories] if subcategories else None
+
+        data.update({
+            'main_category_id': work_selection.main_category.category_code if work_selection.main_category else None,
+            'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories],
+            'years_experience': work_selection.years_experience,
+            'skills': skills,
+            'description': work_selection.skills
+        })
+
+    # Get SOS-specific data
+    if hasattr(profile, 'sos_service') and profile.sos_service:
+        sos_data = profile.sos_service
+        data.update({
+            'emergency_service_types': sos_data.emergency_service_types.split(',') if sos_data.emergency_service_types else [],
+            'contact_number': sos_data.contact_number,
+            'current_location': sos_data.current_location,
+            'emergency_description': sos_data.emergency_description
+        })
+
+    return data if data else None
