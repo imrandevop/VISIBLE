@@ -430,6 +430,18 @@ def notify_seekers_about_provider_status_change(provider_user_id, category_code,
                         logger.warning(f"❌ Provider data is None for provider {provider_user_id}")
                 else:
                     # Provider went offline - send offline notification
+                    # Get all subcategories this provider offers
+                    all_subcategories = []
+                    if hasattr(provider_status.user.profile, 'work_selection') and provider_status.user.profile.work_selection:
+                        subcategories_qs = provider_status.user.profile.work_selection.selected_subcategories.all()
+                        all_subcategories = [
+                            {
+                                'code': sub.sub_category.subcategory_code,
+                                'name': sub.sub_category.display_name
+                            }
+                            for sub in subcategories_qs
+                        ]
+
                     logger.info(f"📤 Sending provider_went_offline to group: user_{seeker_pref.user.id}_seeker")
                     async_to_sync(channel_layer.group_send)(
                         f'user_{seeker_pref.user.id}_seeker',
@@ -439,7 +451,8 @@ def notify_seekers_about_provider_status_change(provider_user_id, category_code,
                             'main_category': {
                                 'code': category.category_code,
                                 'name': category.display_name
-                            }
+                            },
+                            'all_subcategories': all_subcategories
                         }
                     )
             else:
