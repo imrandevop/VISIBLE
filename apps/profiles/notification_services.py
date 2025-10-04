@@ -25,7 +25,7 @@ def send_work_assignment_notification(provider_profile, work_order):
         seeker_profile = work_order.seeker_profile
         seeker_name = seeker_profile.full_name
         service_type = work_order.service_type
-        distance = work_order.distance or 'nearby'
+        distance = f"{work_order.calculated_distance:.2f}km" if work_order.calculated_distance else 'nearby'
         message_text = work_order.message or ''
 
         # Create FCM message
