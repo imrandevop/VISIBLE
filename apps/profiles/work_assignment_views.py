@@ -81,12 +81,14 @@ def assign_work(request, version=None):
 
     POST /api/1/profiles/assign-work/
     Body: {
-        "provider_id": 123,
-        "service_type": "painter",
-        "message": "Need to paint living room",
-        "distance": "5km",
+        "provider_id": "AB12345678",
+        "service_type": "worker",
+        "main_category_id": "MS0003",
+        "sub_category_id": "SS0020",
+        "message": "Need help with painting work",
         "latitude": 12.345,
-        "longitude": 67.890
+        "longitude": 67.890,
+        "schedule": {"type": "immediate"}
     }
     """
     try:
@@ -101,28 +103,28 @@ def assign_work(request, version=None):
             }, status=status.HTTP_403_FORBIDDEN)
 
         # Extract request data
-        provider_id = request.data.get('provider_id')
+        provider_id = request.data.get('provider_id')  # String: "AB12345678"
         service_type = request.data.get('service_type')
+        main_category_id = request.data.get('main_category_id')
+        sub_category_id = request.data.get('sub_category_id')
         message = request.data.get('message', '')
-        distance = request.data.get('distance', '')
         latitude = request.data.get('latitude')
         longitude = request.data.get('longitude')
+        schedule = request.data.get('schedule')
 
         # Validation
-        if not provider_id or not service_type:
+        if not all([provider_id, service_type, main_category_id, sub_category_id, latitude, longitude]):
             return Response({
                 'status': 'error',
-                'message': 'provider_id and service_type are required'
+                'message': 'provider_id, service_type, main_category_id, sub_category_id, latitude, and longitude are required'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Get provider
+        # Get provider by provider_id string (e.g., "AB12345678")
         try:
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
-            provider = User.objects.get(id=provider_id)
-            provider_profile = provider.profile
+            provider_profile = UserProfile.objects.select_related('user').get(provider_id=provider_id)
+            provider = provider_profile.user
 
-            # Validate provider
+            # Validate provider type
             if provider_profile.user_type != 'provider':
                 return Response({
                     'status': 'error',
@@ -136,11 +138,79 @@ def assign_work(request, version=None):
                     'message': f'Provider does not offer {service_type} services'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-        except User.DoesNotExist:
+        except UserProfile.DoesNotExist:
             return Response({
                 'status': 'error',
                 'message': 'Provider not found'
             }, status=status.HTTP_404_NOT_FOUND)
+
+        # Validate category and subcategory
+        try:
+            from apps.work_categories.models import WorkCategory, WorkSubCategory
+
+            # Check if main category exists
+            main_category = WorkCategory.objects.get(category_code=main_category_id, is_active=True)
+
+            # Check if subcategory exists under this category
+            sub_category = WorkSubCategory.objects.get(
+                subcategory_code=sub_category_id,
+                category=main_category,
+                is_active=True
+            )
+
+            # Validate provider offers this category/subcategory
+            if hasattr(provider_profile, 'work_selection') and provider_profile.work_selection:
+                # Check main category
+                if provider_profile.work_selection.main_category.category_code != main_category_id:
+                    return Response({
+                        'status': 'error',
+                        'message': f'Provider does not offer services in category: {main_category.name}'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Check subcategory
+                provider_subcategories = provider_profile.work_selection.selected_subcategories.all()
+                subcategory_codes = [sc.sub_category.subcategory_code for sc in provider_subcategories]
+
+                if sub_category_id not in subcategory_codes:
+                    return Response({
+                        'status': 'error',
+                        'message': f'Provider does not offer service: {sub_category.display_name}'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({
+                    'status': 'error',
+                    'message': 'Provider has not configured their services yet'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        except WorkCategory.DoesNotExist:
+            return Response({
+                'status': 'error',
+                'message': f'Category with code {main_category_id} not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except WorkSubCategory.DoesNotExist:
+            return Response({
+                'status': 'error',
+                'message': f'Subcategory with code {sub_category_id} not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Get provider's current location for distance calculation
+        from apps.core.models import ProviderActiveStatus, calculate_distance
+
+        try:
+            provider_status = ProviderActiveStatus.objects.get(user=provider)
+            provider_lat = float(provider_status.latitude) if provider_status.latitude else None
+            provider_lng = float(provider_status.longitude) if provider_status.longitude else None
+        except ProviderActiveStatus.DoesNotExist:
+            provider_lat = None
+            provider_lng = None
+
+        # Calculate distance
+        calculated_distance = None
+        if provider_lat and provider_lng:
+            calculated_distance = calculate_distance(
+                float(latitude), float(longitude),
+                provider_lat, provider_lng
+            )
 
         # Check for existing pending work orders
         existing_order = WorkOrder.objects.filter(
@@ -161,10 +231,15 @@ def assign_work(request, version=None):
                 seeker=seeker,
                 provider=provider,
                 service_type=service_type,
+                main_category_code=main_category_id,
+                sub_category_code=sub_category_id,
                 message=message,
-                distance=distance,
+                calculated_distance=calculated_distance,
                 seeker_latitude=latitude,
                 seeker_longitude=longitude,
+                provider_latitude=provider_lat,
+                provider_longitude=provider_lng,
+                schedule_data=schedule,
                 status='pending'
             )
 
@@ -189,10 +264,11 @@ def assign_work(request, version=None):
                     'work_order_id': work_order.id,
                     'provider_name': provider_profile.full_name,
                     'provider_mobile': provider.mobile_number,
-                    'provider_rating': 4.88,  # Mock rating data
                     'service_type': service_type,
+                    'distance': f"{calculated_distance:.2f}km" if calculated_distance else None,
                     'fcm_sent': fcm_success,
                     'websocket_sent': websocket_success,
+                    'schedule': schedule,
                     'created_at': work_order.created_at.isoformat()
                 }
             }, status=status.HTTP_201_CREATED)

@@ -29,11 +29,16 @@ class WorkOrder(BaseModel):
 
     # Work details
     service_type = models.CharField(max_length=100, help_text="Type of service requested")
+    main_category_code = models.CharField(max_length=20, blank=True, default='', help_text="Main category code (e.g., MS0001)")
+    sub_category_code = models.CharField(max_length=20, blank=True, default='', help_text="Sub category code (e.g., SS0001)")
     message = models.TextField(blank=True, help_text="Additional message from seeker")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
 
-    # Location info (optional)
-    distance = models.CharField(max_length=50, blank=True, help_text="Distance between seeker and provider")
+    # Schedule info
+    schedule_data = models.JSONField(null=True, blank=True, help_text="Schedule information from frontend")
+
+    # Location info
+    calculated_distance = models.FloatField(null=True, blank=True, help_text="Calculated distance in kilometers")
     seeker_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     seeker_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     provider_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
