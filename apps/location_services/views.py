@@ -350,12 +350,16 @@ async def notify_seekers_about_provider_status_change(provider_user_id, category
         from apps.core.models import SeekerSearchPreference, ProviderActiveStatus, calculate_distance
         from apps.work_categories.models import WorkCategory, WorkSubCategory
 
+        logger.info(f"🔔 notify_seekers_about_provider_status_change called: provider={provider_user_id}, category={category_code}, subcategory={subcategory_code}, online={is_online}")
+
         # Get provider's current location and details
         try:
             provider_status = ProviderActiveStatus.objects.select_related(
                 'user__profile', 'main_category', 'sub_category'
             ).get(user_id=provider_user_id, is_active=True)
+            logger.info(f"✅ Provider status found: {provider_status.user.profile.full_name} at ({provider_status.latitude}, {provider_status.longitude})")
         except ProviderActiveStatus.DoesNotExist:
+            logger.warning(f"❌ Provider status not found for user_id={provider_user_id}")
             return
 
         # Get category and subcategory objects
@@ -364,7 +368,9 @@ async def notify_seekers_about_provider_status_change(provider_user_id, category
             subcategory = WorkSubCategory.objects.get(
                 subcategory_code=subcategory_code, category=category, is_active=True
             )
+            logger.info(f"✅ Category found: {category.name}, Subcategory: {subcategory.name}")
         except (WorkCategory.DoesNotExist, WorkSubCategory.DoesNotExist):
+            logger.warning(f"❌ Category or Subcategory not found: category_code={category_code}, subcategory_code={subcategory_code}")
             return
 
         # Find seekers actively searching for this category/subcategory
@@ -374,7 +380,13 @@ async def notify_seekers_about_provider_status_change(provider_user_id, category
             searching_subcategory=subcategory
         ).select_related('user')
 
+        logger.info(f"📊 Found {searching_seekers.count()} active seekers searching for {category.name} > {subcategory.name}")
+
         channel_layer = get_channel_layer()
+
+        if not channel_layer:
+            logger.error(f"❌ Channel layer is None!")
+            return
 
         for seeker_pref in searching_seekers:
             # Calculate distance between seeker and provider
@@ -383,8 +395,12 @@ async def notify_seekers_about_provider_status_change(provider_user_id, category
                 provider_status.latitude, provider_status.longitude
             )
 
+            logger.info(f"🔍 Checking seeker {seeker_pref.user.mobile_number}: distance={distance:.2f}km, radius={seeker_pref.distance_radius}km")
+
             # Only notify if provider is within seeker's search radius
             if distance <= seeker_pref.distance_radius:
+                logger.info(f"✅ Seeker {seeker_pref.user.mobile_number} is within range!")
+
                 if is_online:
                     # Provider came online - send new provider notification
                     provider_data = get_complete_provider_data(
@@ -396,6 +412,7 @@ async def notify_seekers_about_provider_status_change(provider_user_id, category
                     )
 
                     if provider_data:
+                        logger.info(f"📤 Sending new_provider_available to group: user_{seeker_pref.user.id}_seeker")
                         await channel_layer.group_send(
                             f'user_{seeker_pref.user.id}_seeker',
                             {
@@ -403,8 +420,12 @@ async def notify_seekers_about_provider_status_change(provider_user_id, category
                                 'provider': provider_data
                             }
                         )
+                        logger.info(f"✅ Message sent successfully to seeker {seeker_pref.user.mobile_number}")
+                    else:
+                        logger.warning(f"❌ Provider data is None for provider {provider_user_id}")
                 else:
                     # Provider went offline - send offline notification
+                    logger.info(f"📤 Sending provider_went_offline to group: user_{seeker_pref.user.id}_seeker")
                     await channel_layer.group_send(
                         f'user_{seeker_pref.user.id}_seeker',
                         {
@@ -416,6 +437,8 @@ async def notify_seekers_about_provider_status_change(provider_user_id, category
                             }
                         }
                     )
+            else:
+                logger.info(f"⚠️ Seeker {seeker_pref.user.mobile_number} is OUT OF RANGE (distance={distance:.2f}km > radius={seeker_pref.distance_radius}km)")
 
     except Exception as e:
         logger.error(f"Error notifying seekers about provider status change: {str(e)}")
