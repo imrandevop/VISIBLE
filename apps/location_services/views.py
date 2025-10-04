@@ -356,7 +356,7 @@ def notify_seekers_about_provider_status_change(provider_user_id, category_code,
         try:
             provider_status = ProviderActiveStatus.objects.select_related(
                 'user__profile', 'main_category', 'sub_category'
-            ).get(user_id=provider_user_id, is_active=True)
+            ).get(user_id=provider_user_id)
             logger.info(f"✅ Provider status found: {provider_status.user.profile.full_name} at ({provider_status.latitude}, {provider_status.longitude})")
         except ProviderActiveStatus.DoesNotExist:
             logger.warning(f"❌ Provider status not found for user_id={provider_user_id}")
@@ -402,61 +402,66 @@ def notify_seekers_about_provider_status_change(provider_user_id, category_code,
 
             logger.info(f"🔍 Checking seeker {seeker_pref.user.mobile_number}: distance={distance:.2f}km, radius={seeker_pref.distance_radius}km")
 
-            # Only notify if provider is within seeker's search radius
+            # For online: notify only if within range
+            # For offline: notify all seekers (they might have this provider visible)
+            if is_online and distance > seeker_pref.distance_radius:
+                logger.info(f"⚠️ Seeker {seeker_pref.user.mobile_number} is OUT OF RANGE (distance={distance:.2f}km > radius={seeker_pref.distance_radius}km)")
+                continue
+
             if distance <= seeker_pref.distance_radius:
                 logger.info(f"✅ Seeker {seeker_pref.user.mobile_number} is within range!")
+            else:
+                logger.info(f"⚠️ Seeker {seeker_pref.user.mobile_number} OUT OF RANGE but notifying offline status")
 
-                if is_online:
-                    # Provider came online - send new provider notification
-                    provider_data = get_complete_provider_data(
-                        provider_status.user.profile,
-                        subcategory,
-                        distance,
-                        provider_status.latitude,
-                        provider_status.longitude
-                    )
+            if is_online:
+                # Provider came online - send new provider notification
+                provider_data = get_complete_provider_data(
+                    provider_status.user.profile,
+                    subcategory,
+                    distance,
+                    provider_status.latitude,
+                    provider_status.longitude
+                )
 
-                    if provider_data:
-                        logger.info(f"📤 Sending new_provider_available to group: user_{seeker_pref.user.id}_seeker")
-                        async_to_sync(channel_layer.group_send)(
-                            f'user_{seeker_pref.user.id}_seeker',
-                            {
-                                'type': 'new_provider_available',
-                                'provider': provider_data
-                            }
-                        )
-                        logger.info(f"✅ Message sent successfully to seeker {seeker_pref.user.mobile_number}")
-                    else:
-                        logger.warning(f"❌ Provider data is None for provider {provider_user_id}")
-                else:
-                    # Provider went offline - send offline notification
-                    # Get all subcategories this provider offers
-                    all_subcategories = []
-                    if hasattr(provider_status.user.profile, 'work_selection') and provider_status.user.profile.work_selection:
-                        subcategories_qs = provider_status.user.profile.work_selection.selected_subcategories.all()
-                        all_subcategories = [
-                            {
-                                'code': sub.sub_category.subcategory_code,
-                                'name': sub.sub_category.display_name
-                            }
-                            for sub in subcategories_qs
-                        ]
-
-                    logger.info(f"📤 Sending provider_went_offline to group: user_{seeker_pref.user.id}_seeker")
+                if provider_data:
+                    logger.info(f"📤 Sending new_provider_available to group: user_{seeker_pref.user.id}_seeker")
                     async_to_sync(channel_layer.group_send)(
                         f'user_{seeker_pref.user.id}_seeker',
                         {
-                            'type': 'provider_went_offline',
-                            'provider_id': provider_status.user.profile.provider_id,
-                            'main_category': {
-                                'code': category.category_code,
-                                'name': category.display_name
-                            },
-                            'all_subcategories': all_subcategories
+                            'type': 'new_provider_available',
+                            'provider': provider_data
                         }
                     )
+                    logger.info(f"✅ Message sent successfully to seeker {seeker_pref.user.mobile_number}")
+                else:
+                    logger.warning(f"❌ Provider data is None for provider {provider_user_id}")
             else:
-                logger.info(f"⚠️ Seeker {seeker_pref.user.mobile_number} is OUT OF RANGE (distance={distance:.2f}km > radius={seeker_pref.distance_radius}km)")
+                # Provider went offline - send offline notification
+                # Get all subcategories this provider offers
+                all_subcategories = []
+                if hasattr(provider_status.user.profile, 'work_selection') and provider_status.user.profile.work_selection:
+                    subcategories_qs = provider_status.user.profile.work_selection.selected_subcategories.all()
+                    all_subcategories = [
+                        {
+                            'code': sub.sub_category.subcategory_code,
+                            'name': sub.sub_category.display_name
+                        }
+                        for sub in subcategories_qs
+                    ]
+
+                logger.info(f"📤 Sending provider_went_offline to group: user_{seeker_pref.user.id}_seeker")
+                async_to_sync(channel_layer.group_send)(
+                    f'user_{seeker_pref.user.id}_seeker',
+                    {
+                        'type': 'provider_went_offline',
+                        'provider_id': provider_status.user.profile.provider_id,
+                        'main_category': {
+                            'code': category.category_code,
+                            'name': category.name
+                        },
+                        'all_subcategories': all_subcategories
+                    }
+                )
 
     except Exception as e:
         logger.error(f"Error notifying seekers about provider status change: {str(e)}")
