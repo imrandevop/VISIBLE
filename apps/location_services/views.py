@@ -370,8 +370,8 @@ async def notify_seekers_about_provider_status_change(provider_user_id, category
         # Find seekers actively searching for this category/subcategory
         searching_seekers = SeekerSearchPreference.objects.filter(
             is_searching=True,
-            searching_category_code=category_code,
-            searching_subcategory_code=subcategory_code
+            searching_category=category,
+            searching_subcategory=subcategory
         ).select_related('user')
 
         channel_layer = get_channel_layer()
