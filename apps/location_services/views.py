@@ -118,12 +118,11 @@ def provider_toggle_status(request, version=None):
         # Notify nearby seekers about provider status change via WebSocket
         try:
             from channels.layers import get_channel_layer
-            from asgiref.sync import async_to_sync
 
             channel_layer = get_channel_layer()
             if channel_layer and active:
                 # Provider went online - trigger immediate notification to nearby seekers
-                async_to_sync(notify_seekers_about_provider_status_change)(
+                notify_seekers_about_provider_status_change(
                     request.user.id, provider_category_code, provider_subcategory_code, True
                 )
         except Exception as e:
@@ -343,10 +342,11 @@ def seeker_search_toggle(request, version=None):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-async def notify_seekers_about_provider_status_change(provider_user_id, category_code, subcategory_code, is_online):
-    """Notify nearby seekers when a provider changes status"""
+def notify_seekers_about_provider_status_change(provider_user_id, category_code, subcategory_code, is_online):
+    """Notify nearby seekers when a provider changes status - SYNCHRONOUS VERSION"""
     try:
         from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
         from apps.core.models import SeekerSearchPreference, ProviderActiveStatus, calculate_distance
         from apps.work_categories.models import WorkCategory, WorkSubCategory
 
@@ -418,7 +418,7 @@ async def notify_seekers_about_provider_status_change(provider_user_id, category
 
                     if provider_data:
                         logger.info(f"📤 Sending new_provider_available to group: user_{seeker_pref.user.id}_seeker")
-                        await channel_layer.group_send(
+                        async_to_sync(channel_layer.group_send)(
                             f'user_{seeker_pref.user.id}_seeker',
                             {
                                 'type': 'new_provider_available',
@@ -431,7 +431,7 @@ async def notify_seekers_about_provider_status_change(provider_user_id, category
                 else:
                     # Provider went offline - send offline notification
                     logger.info(f"📤 Sending provider_went_offline to group: user_{seeker_pref.user.id}_seeker")
-                    await channel_layer.group_send(
+                    async_to_sync(channel_layer.group_send)(
                         f'user_{seeker_pref.user.id}_seeker',
                         {
                             'type': 'provider_went_offline',
