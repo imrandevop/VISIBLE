@@ -5,6 +5,7 @@ from django.urls import reverse
 from django.utils.safestring import mark_safe
 from django import forms
 from apps.profiles.models import UserProfile, ServicePortfolioImage
+from apps.profiles.work_assignment_models import WorkOrder, WorkAssignmentNotification
 from apps.authentication.models import User
 
 
@@ -203,3 +204,114 @@ class ServicePortfolioImageAdmin(admin.ModelAdmin):
             )
         return "No Image"
     image_preview.short_description = 'Image Preview'
+
+
+@admin.register(WorkOrder)
+class WorkOrderAdmin(admin.ModelAdmin):
+    list_display = [
+        'id',
+        'seeker_name',
+        'provider_name',
+        'service_type',
+        'status',
+        'calculated_distance',
+        'created_at'
+    ]
+
+    list_filter = [
+        'status',
+        'service_type',
+        'created_at'
+    ]
+
+    search_fields = [
+        'seeker__mobile_number',
+        'provider__mobile_number',
+        'seeker__profile__full_name',
+        'provider__profile__full_name'
+    ]
+
+    readonly_fields = [
+        'created_at',
+        'updated_at',
+        'response_time',
+        'completion_time'
+    ]
+
+    fieldsets = (
+        ('Users', {
+            'fields': ('seeker', 'provider')
+        }),
+        ('Work Details', {
+            'fields': (
+                'service_type',
+                'main_category_code',
+                'sub_category_code',
+                'message',
+                'status'
+            )
+        }),
+        ('Schedule', {
+            'fields': ('schedule_data',)
+        }),
+        ('Location', {
+            'fields': (
+                'calculated_distance',
+                'seeker_latitude',
+                'seeker_longitude',
+                'provider_latitude',
+                'provider_longitude'
+            )
+        }),
+        ('Notifications', {
+            'fields': ('fcm_sent', 'websocket_sent')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at', 'response_time', 'completion_time')
+        })
+    )
+
+    def seeker_name(self, obj):
+        return obj.seeker_profile.full_name if obj.seeker_profile else 'N/A'
+    seeker_name.short_description = 'Seeker'
+    seeker_name.admin_order_field = 'seeker__profile__full_name'
+
+    def provider_name(self, obj):
+        return obj.provider_profile.full_name if obj.provider_profile else 'N/A'
+    provider_name.short_description = 'Provider'
+    provider_name.admin_order_field = 'provider__profile__full_name'
+
+
+@admin.register(WorkAssignmentNotification)
+class WorkAssignmentNotificationAdmin(admin.ModelAdmin):
+    list_display = [
+        'id',
+        'notification_type',
+        'recipient_name',
+        'delivery_method',
+        'delivery_status',
+        'created_at'
+    ]
+
+    list_filter = [
+        'notification_type',
+        'delivery_method',
+        'delivery_status',
+        'created_at'
+    ]
+
+    search_fields = [
+        'recipient__mobile_number',
+        'work_order__id'
+    ]
+
+    readonly_fields = [
+        'created_at',
+        'updated_at',
+        'sent_at',
+        'delivered_at'
+    ]
+
+    def recipient_name(self, obj):
+        return obj.recipient.profile.full_name if hasattr(obj.recipient, 'profile') else 'N/A'
+    recipient_name.short_description = 'Recipient'
