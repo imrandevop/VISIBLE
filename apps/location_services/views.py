@@ -120,10 +120,10 @@ def provider_toggle_status(request, version=None):
             from channels.layers import get_channel_layer
 
             channel_layer = get_channel_layer()
-            if channel_layer and active:
-                # Provider went online - trigger immediate notification to nearby seekers
+            if channel_layer:
+                # Notify seekers about provider status change (online or offline)
                 notify_seekers_about_provider_status_change(
-                    request.user.id, provider_category_code, provider_subcategory_code, True
+                    request.user.id, provider_category_code, provider_subcategory_code, active
                 )
         except Exception as e:
             logger.warning(f"Failed to send WebSocket notification: {str(e)}")
