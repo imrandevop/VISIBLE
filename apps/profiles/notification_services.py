@@ -13,20 +13,35 @@ def _ensure_firebase_initialized():
     """Ensure Firebase Admin SDK is initialized"""
     if not firebase_admin._apps:
         try:
-            firebase_credentials_path = os.path.join(settings.BASE_DIR, 'firebase_credentials.json')
-            if os.path.exists(firebase_credentials_path):
-                cred = credentials.Certificate(firebase_credentials_path)
+            # Try to load from environment variable first (for production)
+            import json
+            firebase_credentials_json = os.getenv('FIREBASE_CREDENTIALS_JSON')
+
+            if firebase_credentials_json:
+                # Parse JSON from environment variable
+                cred_dict = json.loads(firebase_credentials_json)
+                cred = credentials.Certificate(cred_dict)
                 firebase_admin.initialize_app(cred)
-                logger.info("✅ Firebase Admin SDK initialized")
+                logger.info("✅ Firebase Admin SDK initialized from environment variable")
             else:
-                logger.error(f"❌ Firebase credentials not found at {firebase_credentials_path}")
-                raise FileNotFoundError(f"Firebase credentials not found at {firebase_credentials_path}")
+                # Fallback to file (for local development)
+                firebase_credentials_path = os.path.join(settings.BASE_DIR, 'firebase_credentials.json')
+                if os.path.exists(firebase_credentials_path):
+                    cred = credentials.Certificate(firebase_credentials_path)
+                    firebase_admin.initialize_app(cred)
+                    logger.info("✅ Firebase Admin SDK initialized from file")
+                else:
+                    logger.error(f"❌ Firebase credentials not found. Set FIREBASE_CREDENTIALS_JSON env var or place firebase_credentials.json at {firebase_credentials_path}")
+                    raise FileNotFoundError("Firebase credentials not found")
         except Exception as e:
             logger.error(f"❌ Failed to initialize Firebase: {e}")
             raise
 
 # Initialize Firebase when module is loaded
-_ensure_firebase_initialized()
+try:
+    _ensure_firebase_initialized()
+except Exception as e:
+    logger.warning(f"⚠️ Firebase initialization failed on module load: {e}")
 
 def send_work_assignment_notification(provider_profile, work_order):
     """
@@ -39,6 +54,9 @@ def send_work_assignment_notification(provider_profile, work_order):
     Returns:
         tuple: (success: bool, message_id: str or None, error: str or None)
     """
+    # Ensure Firebase is initialized before sending
+    _ensure_firebase_initialized()
+
     if not provider_profile.fcm_token:
         logger.warning(f"⚠️ No FCM token for provider: {provider_profile.user.mobile_number}")
         return False, None, "No FCM token available"
@@ -150,6 +168,9 @@ def send_work_response_notification(seeker_profile, work_order, accepted):
     Returns:
         tuple: (success: bool, message_id: str or None, error: str or None)
     """
+    # Ensure Firebase is initialized before sending
+    _ensure_firebase_initialized()
+
     if not seeker_profile.fcm_token:
         logger.warning(f"⚠️ No FCM token for seeker: {seeker_profile.user.mobile_number}")
         return False, None, "No FCM token available"
@@ -229,6 +250,9 @@ def validate_fcm_token(fcm_token):
     Returns:
         bool: True if token is valid, False otherwise
     """
+    # Ensure Firebase is initialized before validating
+    _ensure_firebase_initialized()
+
     if not fcm_token:
         return False
 
