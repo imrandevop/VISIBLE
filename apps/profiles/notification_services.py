@@ -1,9 +1,32 @@
 # apps/profiles/notification_services.py
-from firebase_admin import messaging
+import firebase_admin
+from firebase_admin import credentials, messaging
 from django.utils import timezone
+from django.conf import settings
 import logging
+import os
 
 logger = logging.getLogger(__name__)
+
+# Ensure Firebase is initialized
+def _ensure_firebase_initialized():
+    """Ensure Firebase Admin SDK is initialized"""
+    if not firebase_admin._apps:
+        try:
+            firebase_credentials_path = os.path.join(settings.BASE_DIR, 'firebase_credentials.json')
+            if os.path.exists(firebase_credentials_path):
+                cred = credentials.Certificate(firebase_credentials_path)
+                firebase_admin.initialize_app(cred)
+                logger.info("✅ Firebase Admin SDK initialized")
+            else:
+                logger.error(f"❌ Firebase credentials not found at {firebase_credentials_path}")
+                raise FileNotFoundError(f"Firebase credentials not found at {firebase_credentials_path}")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Firebase: {e}")
+            raise
+
+# Initialize Firebase when module is loaded
+_ensure_firebase_initialized()
 
 def send_work_assignment_notification(provider_profile, work_order):
     """
