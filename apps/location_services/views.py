@@ -389,6 +389,11 @@ async def notify_seekers_about_provider_status_change(provider_user_id, category
             return
 
         for seeker_pref in searching_seekers:
+            # Validate coordinates exist
+            if not all([seeker_pref.latitude, seeker_pref.longitude, provider_status.latitude, provider_status.longitude]):
+                logger.warning(f"⚠️ Missing coordinates - Seeker: ({seeker_pref.latitude}, {seeker_pref.longitude}), Provider: ({provider_status.latitude}, {provider_status.longitude})")
+                continue
+
             # Calculate distance between seeker and provider
             distance = calculate_distance(
                 seeker_pref.latitude, seeker_pref.longitude,
@@ -477,6 +482,11 @@ def get_complete_provider_data(profile, subcategory, distance, provider_lat, pro
     """Get complete provider data including all profile details"""
     try:
         from django.conf import settings
+
+        # Validate coordinates
+        if provider_lat is None or provider_lng is None:
+            logger.error(f"❌ Provider coordinates are None: lat={provider_lat}, lng={provider_lng}")
+            return None
 
         # Determine base URL for images
         if hasattr(settings, 'ALLOWED_HOSTS') and settings.ALLOWED_HOSTS:
