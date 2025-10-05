@@ -69,7 +69,7 @@ def send_work_assignment_notification(provider_profile, work_order):
         distance = f"{work_order.calculated_distance:.2f}km" if work_order.calculated_distance else 'nearby'
         message_text = work_order.message or ''
 
-        # Create FCM message
+        # Create FCM message (data-only for Android to ensure WorkAssignmentMessagingService handles it)
         message = messaging.Message(
             data={
                 'type': 'work_assigned',
@@ -84,14 +84,6 @@ def send_work_assignment_notification(provider_profile, work_order):
             },
             android=messaging.AndroidConfig(
                 priority='high',
-                notification=messaging.AndroidNotification(
-                    title='🚨 New Work Assignment',
-                    body=f'{seeker_name} needs {service_type} • {distance}',
-                    channel_id='work_assignment_channel',
-                    priority='max',
-                    visibility='public',
-                    sound='alarm',
-                ),
             ),
             apns=messaging.APNSConfig(
                 payload=messaging.APNSPayload(
