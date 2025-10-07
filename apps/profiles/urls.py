@@ -12,6 +12,9 @@ urlpatterns = [
     path('me/', views.get_profile_api, name='get_profile'),
     path('status/', views.check_profile_status_api, name='profile_status'),
 
+    # Provider dashboard endpoint
+    path('provider/dashboard/', views.provider_dashboard_api, name='provider_dashboard'),
+
     # Communication settings endpoint (GET and POST)
     path('communication/settings/', communication_views.communication_settings_api, name='communication_settings'),
 

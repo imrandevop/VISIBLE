@@ -336,6 +336,25 @@ class ProviderReview(BaseModel):
         return self.review_date.strftime("%b %d, %Y")
 
 
+class Wallet(BaseModel):
+    """Provider wallet for managing earnings"""
+    user_profile = models.OneToOneField(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name='wallet',
+        limit_choices_to={'user_type': 'provider'}
+    )
+    balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    currency = models.CharField(max_length=3, default='INR')
+
+    def __str__(self):
+        return f"{self.user_profile.full_name} - Wallet: {self.balance} {self.currency}"
+
+    class Meta:
+        verbose_name = "Provider Wallet"
+        verbose_name_plural = "Provider Wallets"
+
+
 # Import communication models
 from .communication_models import CommunicationSettings
 
