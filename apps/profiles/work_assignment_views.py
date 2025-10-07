@@ -512,6 +512,106 @@ def update_provider_status(request, version=None):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def respond_to_work(request, work_id, version=None):
+    """
+    Provider responds to work assignment (accept/reject)
+
+    POST /api/1/profiles/work-orders/{work_id}/respond/
+    Body: {
+        "accepted": true  // or false to reject
+    }
+    """
+    try:
+        provider = request.user
+        provider_profile = provider.profile
+
+        # Validate user is a provider
+        if provider_profile.user_type != 'provider':
+            return Response({
+                'status': 'error',
+                'message': 'Only providers can respond to work assignments'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        # Get accepted status from request
+        accepted = request.data.get('accepted')
+
+        if accepted is None:
+            return Response({
+                'status': 'error',
+                'message': 'accepted field is required (true or false)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Get work order
+        try:
+            work_order = WorkOrder.objects.select_related(
+                'seeker__profile',
+                'provider__profile'
+            ).get(id=work_id, provider=provider, status='pending')
+        except WorkOrder.DoesNotExist:
+            return Response({
+                'status': 'error',
+                'message': 'Work order not found or already processed'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Update work order status
+        with transaction.atomic():
+            work_order.status = 'accepted' if accepted else 'rejected'
+            work_order.response_time = timezone.now()
+            work_order.save(update_fields=['status', 'response_time'])
+
+            logger.info(f"📥 Provider {provider.mobile_number} {'accepted' if accepted else 'rejected'} work #{work_id}")
+
+            # Send notification to seeker via WebSocket
+            send_response_to_seeker_websocket(work_order, accepted)
+
+            # Send FCM notification to seeker
+            from .notification_services import send_work_response_notification
+            send_work_response_notification(work_order.seeker_profile, work_order, accepted)
+
+            return Response({
+                'status': 'success',
+                'message': f'Work order {"accepted" if accepted else "rejected"} successfully',
+                'data': {
+                    'work_order_id': work_order.id,
+                    'accepted': accepted,
+                    'status': work_order.status,
+                    'response_time': work_order.response_time.isoformat(),
+                    'seeker_name': work_order.seeker_profile.full_name,
+                    'service_type': work_order.service_type
+                }
+            }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Error responding to work order {work_id}: {str(e)}")
+        return Response({
+            'status': 'error',
+            'message': 'An unexpected error occurred'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def send_response_to_seeker_websocket(work_order, accepted):
+    """Send WebSocket notification to seeker about provider's response"""
+    try:
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'seeker_{work_order.seeker.id}',
+            {
+                'type': 'work_response_notification',
+                'work_id': work_order.id,
+                'accepted': accepted,
+                'provider_name': work_order.provider_profile.full_name,
+                'provider_mobile': work_order.provider.mobile_number,
+                'service_type': work_order.service_type,
+                'response_time': timezone.now().isoformat()
+            }
+        )
+        logger.info(f"✅ Sent WebSocket response notification to seeker {work_order.seeker.mobile_number}")
+    except Exception as e:
+        logger.error(f"Error sending WebSocket to seeker: {e}")
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_active_providers(request, version=None):

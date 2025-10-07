@@ -19,6 +19,7 @@ urlpatterns = [
     path('fcm-token/', work_assignment_views.update_fcm_token, name='update_fcm_token'),
     path('assign-work/', work_assignment_views.assign_work, name='assign_work'),
     path('work-orders/', work_assignment_views.get_work_orders, name='get_work_orders'),
+    path('work-orders/<int:work_id>/respond/', work_assignment_views.respond_to_work, name='respond_to_work'),
     path('provider-status/', work_assignment_views.update_provider_status, name='update_provider_status'),
     path('active-providers/', work_assignment_views.get_active_providers, name='get_active_providers'),
 ]
