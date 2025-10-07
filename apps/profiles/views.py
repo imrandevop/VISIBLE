@@ -383,12 +383,12 @@ def provider_dashboard_api(request, version=None):
                 "message": "Profile incomplete. Please complete your profile setup."
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # 1. Get active status
+        # 1. Get active status from ProviderActiveStatus (location service)
         provider_status = ProviderActiveStatus.objects.filter(user=user).first()
         active_status_data = {
             "is_active": provider_status.is_active if provider_status else False,
             "provider_id": user_profile.provider_id,
-            "last_updated": user_profile.updated_at.isoformat() if user_profile.updated_at else None
+            "last_updated": provider_status.last_active_at.isoformat() if provider_status and provider_status.last_active_at else None
         }
 
         # 2. Get wallet data
