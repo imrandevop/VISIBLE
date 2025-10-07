@@ -6,8 +6,8 @@ from rest_framework import status
 from django.db import transaction
 
 from apps.profiles.serializers import ProfileSetupSerializer, ProfileResponseSerializer
-from apps.profiles.models import UserProfile, ProviderActiveStatus
-
+from apps.profiles.models import UserProfile
+from apps.core.models import ProviderActiveStatus
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
