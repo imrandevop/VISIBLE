@@ -128,12 +128,8 @@ class LocationConsumer(AsyncWebsocketConsumer):
             await self.close(code=4000)
 
     async def disconnect(self, close_code):
-        """Handle WebSocket disconnect - set provider offline if they're a provider"""
+        """Handle WebSocket disconnect"""
         try:
-            # If this is a provider, set them offline automatically
-            if hasattr(self, 'user_type') and self.user_type == 'provider' and hasattr(self, 'user'):
-                await self.set_provider_offline_on_disconnect()
-
             # Leave user group
             if hasattr(self, 'user_group_name'):
                 await self.channel_layer.group_discard(
@@ -923,38 +919,12 @@ class LocationConsumer(AsyncWebsocketConsumer):
         except Exception:
             return False
 
-    @database_sync_to_async
-    def set_provider_offline_on_disconnect(self):
-        """Set provider status to offline when WebSocket disconnects"""
-        try:
-            # Get all provider statuses for this user and set them to inactive
-            provider_statuses = ProviderActiveStatus.objects.filter(
-                user_id=self.user.id,
-                is_active=True
-            ).select_related('main_category', 'sub_category')
-
-            for provider_status in provider_statuses:
-                # Store category info before setting offline
-                category_code = provider_status.main_category.category_code
-                subcategory_code = provider_status.sub_category.subcategory_code if provider_status.sub_category else None
-
-                # Set provider offline
-                provider_status.is_active = False
-                provider_status.save(update_fields=['is_active'])
-
-                logger.info(f"🔴 Provider {self.user.id} set offline on disconnect (category: {category_code})")
-
-                # Notify seekers using the synchronous version from views
-                from apps.location_services.views import notify_seekers_about_provider_status_change
-                notify_seekers_about_provider_status_change(
-                    self.user.id,
-                    category_code,
-                    subcategory_code,
-                    is_online=False
-                )
-
-        except Exception as e:
-            logger.error(f"Error setting provider offline on disconnect: {str(e)}")
+    # REMOVED: Auto-offline on disconnect
+    # Provider status is now only controlled via API calls (/api/1/location/provider/toggle-status/)
+    # @database_sync_to_async
+    # def set_provider_offline_on_disconnect(self):
+    #     """Set provider status to offline when WebSocket disconnects"""
+    #     # This method has been disabled - providers stay active until they explicitly go offline via API
 
     @database_sync_to_async
     def get_nearby_providers_enhanced(self, seeker_lat, seeker_lng, radius, category_code, subcategory_code):
