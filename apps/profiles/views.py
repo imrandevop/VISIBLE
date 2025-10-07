@@ -6,7 +6,7 @@ from rest_framework import status
 from django.db import transaction
 
 from apps.profiles.serializers import ProfileSetupSerializer, ProfileResponseSerializer
-from apps.profiles.models import UserProfile
+from apps.profiles.models import UserProfile, ProviderActiveStatus
 
 
 @api_view(['POST'])
@@ -384,8 +384,9 @@ def provider_dashboard_api(request, version=None):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # 1. Get active status
+        provider_status = ProviderActiveStatus.objects.filter(user=user).first()
         active_status_data = {
-            "is_active": user_profile.is_active_for_work,
+            "is_active": provider_status.is_active if provider_status else False,
             "provider_id": user_profile.provider_id,
             "last_updated": user_profile.updated_at.isoformat() if user_profile.updated_at else None
         }
