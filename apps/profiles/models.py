@@ -359,4 +359,10 @@ class Wallet(BaseModel):
 from .communication_models import CommunicationSettings
 
 # Import work assignment models
-from .work_assignment_models import WorkOrder, WorkAssignmentNotification
+from .work_assignment_models import (
+    WorkOrder,
+    WorkAssignmentNotification,
+    WorkSession,
+    ChatMessage,
+    TypingIndicator
+)

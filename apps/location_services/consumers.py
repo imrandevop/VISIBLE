@@ -13,83 +13,11 @@ logger = logging.getLogger(__name__)
 """
 WebSocket Connection URLs:
 
-Development:
-- Provider: ws://localhost:8000/ws/location/provider/
-- Seeker: ws://localhost:8000/ws/location/seeker/
+
 
 Production:
 - Provider: wss://api.visibleapp.in/ws/location/provider/
 - Seeker: wss://api.visibleapp.in/ws/location/seeker/
-
-WebSocket Message Examples:
-
-1. Provider WebSocket Message (Updated):
-{
-    "type": "provider_status_update",
-    "active": true,
-    "category_code": "MS0001",
-    "subcategory_code": "SS0001"
-}
-
-2. Seeker Search Update Message:
-{
-    "type": "seeker_search_update",
-    "searching": true,
-    "latitude": 11.2588,
-    "longitude": 75.8577,
-    "category_code": "MS0001",
-    "subcategory_code": "SS0001",
-    "distance_radius": 5
-}
-
-3. New Provider Available Notification (Updated):
-{
-    "type": "new_provider_available",
-    "provider": {
-        "provider_id": "P123",
-        "name": "John Smith",
-        "rating": 0,
-        "description": "Experienced plumber with 5+ years experience",
-        "is_verified": false,
-        "images": [
-            "/media/portfolio/image1.jpg",
-            "/media/portfolio/image2.jpg"
-        ],
-        "main_category": {
-            "code": "MS0001",
-            "name": "Maintenance Services"
-        },
-        "subcategory": {
-            "code": "SS0001",
-            "name": "Plumbing"
-        },
-        "all_subcategories": [
-            {"code": "SS0001", "name": "Plumbing"},
-            {"code": "SS0002", "name": "Electrical"},
-            {"code": "SS0003", "name": "Carpentry"}
-        ],
-        "distance_km": 2.5,
-        "location": {
-            "latitude": 11.2588,
-            "longitude": 75.8577
-        }
-    }
-}
-
-4. Provider Went Offline Notification (Updated):
-{
-    "type": "provider_went_offline",
-    "provider_id": "P123",
-    "main_category": {
-        "code": "MS0001",
-        "name": "Maintenance Services"
-    },
-    "all_subcategories": [
-        {"code": "SS0001", "name": "Plumbing"},
-        {"code": "SS0002", "name": "Electrical"},
-        {"code": "SS0003", "name": "Carpentry"}
-    ]
-}
 """
 
 
