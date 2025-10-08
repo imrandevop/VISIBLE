@@ -434,7 +434,7 @@ class WorkSessionAdmin(admin.ModelAdmin):
     mediums_shared.short_description = 'Mediums (S/P)'
 
     def chat_active(self, obj):
-        return 'Yes' if obj.chat_started_at else 'No'
+        return bool(obj.chat_started_at)
     chat_active.short_description = 'Chat Active'
     chat_active.boolean = True
 
