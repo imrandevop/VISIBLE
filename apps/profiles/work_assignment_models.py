@@ -194,6 +194,27 @@ class WorkSession(BaseModel):
 
     # Completion
     completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='completed_sessions',
+        help_text="User who marked the service as finished"
+    )
+
+    # Service Rating (only seeker can rate provider)
+    rating_stars = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Rating from 1-5 stars (only from seeker to provider)"
+    )
+    rating_description = models.TextField(
+        blank=True,
+        default='',
+        help_text="Rating description/review from seeker"
+    )
+    rated_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"Session {self.session_id} - {self.connection_state}"

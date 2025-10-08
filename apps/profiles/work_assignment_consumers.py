@@ -123,6 +123,10 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                 # Provider cancelling connection
                 await self.handle_cancel_connection(data)
 
+            elif message_type == 'finish_service':
+                # Provider marking service as finished
+                await self.handle_finish_service(data)
+
             else:
                 logger.warning(f"Unknown message type received: {message_type}")
                 await self.send(text_data=json.dumps({
@@ -458,6 +462,47 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                 'error': 'Failed to cancel connection'
             }))
 
+    async def handle_finish_service(self, data):
+        """Handle provider marking service as finished"""
+        try:
+            session_id = data.get('session_id')
+
+            if not session_id:
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'error': 'session_id is required'
+                }))
+                return
+
+            # Complete session (provider cannot provide rating)
+            success = await self.complete_session(session_id, self.user.id, rating_stars=None, rating_description=None)
+
+            if success:
+                # Stop distance updates
+                if self.distance_update_task and not self.distance_update_task.done():
+                    self.distance_update_task.cancel()
+
+                # Send confirmation to provider
+                await self.send(text_data=json.dumps({
+                    'type': 'service_finished',
+                    'session_id': session_id,
+                    'message': 'Service marked as finished successfully',
+                    'timestamp': timezone.now().isoformat()
+                }))
+
+                # Notify seeker
+                await self.notify_service_finished(session_id, 'provider')
+
+                # Close connection
+                await self.close()
+
+        except Exception as e:
+            logger.error(f"Error handling finish service: {e}")
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error': 'Failed to finish service'
+            }))
+
     # Channel layer message handlers
     async def work_assignment(self, event):
         """
@@ -566,6 +611,19 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
     async def provider_mediums_update(self, event):
         """Notify provider about their own mediums being shared (confirmation)"""
         pass  # Already handled in handle_provider_medium_share
+
+    async def service_finished_event(self, event):
+        """Notify provider that seeker marked service as finished"""
+        await self.send(text_data=json.dumps({
+            'type': 'service_finished',
+            'session_id': event['session_id'],
+            'finished_by': 'seeker',
+            'message': 'Seeker marked the service as finished',
+            'timestamp': timezone.now().isoformat()
+        }))
+
+        # Close connection
+        await self.close()
 
     # Background task for periodic distance updates
     async def periodic_distance_update(self, session_id):
@@ -935,6 +993,51 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
             logger.error(f"Error logging WebSocket notification: {e}")
 
     @database_sync_to_async
+    def complete_session(self, session_id, completed_by_user_id, rating_stars=None, rating_description=None):
+        """Complete work session and optionally add rating"""
+        from .work_assignment_models import WorkSession, WorkOrder, ChatMessage
+        from datetime import timedelta
+
+        try:
+            session = WorkSession.objects.get(session_id=session_id)
+
+            # Check if already completed
+            if session.connection_state == 'completed':
+                logger.warning(f"Session {session_id} already completed")
+                return False
+
+            session.connection_state = 'completed'
+            session.completed_by_id = completed_by_user_id
+            session.completed_at = timezone.now()
+
+            # Add rating if provided (only from seeker)
+            if rating_stars is not None:
+                session.rating_stars = rating_stars
+                session.rating_description = rating_description or ''
+                session.rated_at = timezone.now()
+
+            session.save()
+
+            # Update work order status
+            work_order = session.work_order
+            work_order.status = 'completed'
+            work_order.completion_time = timezone.now()
+            work_order.save()
+
+            # Set expiry for chat messages (24 hours from now)
+            expiry_time = timezone.now() + timedelta(hours=24)
+            ChatMessage.objects.filter(session=session).update(expires_at=expiry_time)
+
+            logger.info(f"✅ Session {session_id} completed by user {completed_by_user_id}")
+            return True
+        except WorkSession.DoesNotExist:
+            logger.error(f"Session {session_id} not found")
+            return False
+        except Exception as e:
+            logger.error(f"Error completing session: {e}")
+            return False
+
+    @database_sync_to_async
     def get_work_order_data(self, work_id):
         """Get work order data for seeker notification"""
         from .work_assignment_models import WorkOrder
@@ -1162,6 +1265,27 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error notifying connection cancelled: {e}")
 
+    async def notify_service_finished(self, session_id, finished_by):
+        """Notify other user that service has been finished"""
+        try:
+            session_info = await self.get_session_users(session_id)
+
+            if not session_info:
+                return
+
+            # Notify seeker if provider finished
+            await self.channel_layer.group_send(
+                f'seeker_{session_info["seeker_id"]}',
+                {
+                    'type': 'service_finished_event',
+                    'session_id': session_id,
+                    'finished_by': finished_by
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error notifying service finished: {e}")
+
     @database_sync_to_async
     def get_session_users(self, session_id):
         """Get seeker and provider IDs from session"""
@@ -1295,6 +1419,10 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
 
             elif message_type == 'cancel_connection':
                 await self.handle_cancel_connection(data)
+
+            elif message_type == 'finish_service':
+                # Seeker marking service as finished
+                await self.handle_finish_service(data)
 
             else:
                 logger.warning(f"Unknown message type received: {message_type}")
@@ -1519,6 +1647,58 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error handling cancel connection: {e}")
 
+    async def handle_finish_service(self, data):
+        """Handle seeker marking service as finished (with optional rating)"""
+        try:
+            session_id = data.get('session_id')
+            rating_stars = data.get('rating_stars')  # Optional: 1-5
+            rating_description = data.get('rating_description', '')  # Optional
+
+            if not session_id:
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'error': 'session_id is required'
+                }))
+                return
+
+            # Validate rating if provided
+            if rating_stars is not None:
+                if not isinstance(rating_stars, int) or rating_stars < 1 or rating_stars > 5:
+                    await self.send(text_data=json.dumps({
+                        'type': 'error',
+                        'error': 'rating_stars must be an integer between 1 and 5'
+                    }))
+                    return
+
+            # Complete session with optional rating
+            success = await self.complete_session(session_id, self.user.id, rating_stars, rating_description)
+
+            if success:
+                # Stop distance updates
+                if self.distance_update_task and not self.distance_update_task.done():
+                    self.distance_update_task.cancel()
+
+                # Send confirmation to seeker
+                await self.send(text_data=json.dumps({
+                    'type': 'service_finished',
+                    'session_id': session_id,
+                    'message': 'Service marked as finished successfully',
+                    'timestamp': timezone.now().isoformat()
+                }))
+
+                # Notify provider
+                await self.notify_service_finished(session_id, 'seeker')
+
+                # Close connection
+                await self.close()
+
+        except Exception as e:
+            logger.error(f"Error handling finish service: {e}")
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error': 'Failed to finish service'
+            }))
+
     # Channel layer event handlers
     async def work_response_notification(self, event):
         """Called when provider responds to work assignment"""
@@ -1615,6 +1795,19 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
 
         # Re-enable seeker search preference
         await self.enable_seeker_search_preference()
+
+        # Close connection
+        await self.close()
+
+    async def service_finished_event(self, event):
+        """Notify seeker that provider marked service as finished"""
+        await self.send(text_data=json.dumps({
+            'type': 'service_finished',
+            'session_id': event['session_id'],
+            'finished_by': 'provider',
+            'message': 'Provider marked the service as finished',
+            'timestamp': timezone.now().isoformat()
+        }))
 
         # Close connection
         await self.close()
@@ -1813,6 +2006,51 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
             return False
         except Exception as e:
             logger.error(f"Error cancelling session: {e}")
+            return False
+
+    @database_sync_to_async
+    def complete_session(self, session_id, completed_by_user_id, rating_stars=None, rating_description=None):
+        """Complete work session and optionally add rating"""
+        from .work_assignment_models import WorkSession, ChatMessage
+        from datetime import timedelta
+
+        try:
+            session = WorkSession.objects.get(session_id=session_id)
+
+            # Check if already completed
+            if session.connection_state == 'completed':
+                logger.warning(f"Session {session_id} already completed")
+                return False
+
+            session.connection_state = 'completed'
+            session.completed_by_id = completed_by_user_id
+            session.completed_at = timezone.now()
+
+            # Add rating if provided (only from seeker)
+            if rating_stars is not None:
+                session.rating_stars = rating_stars
+                session.rating_description = rating_description or ''
+                session.rated_at = timezone.now()
+
+            session.save()
+
+            # Update work order status
+            work_order = session.work_order
+            work_order.status = 'completed'
+            work_order.completion_time = timezone.now()
+            work_order.save()
+
+            # Set expiry for chat messages (24 hours from now)
+            expiry_time = timezone.now() + timedelta(hours=24)
+            ChatMessage.objects.filter(session=session).update(expires_at=expiry_time)
+
+            logger.info(f"✅ Session {session_id} completed by user {completed_by_user_id}")
+            return True
+        except WorkSession.DoesNotExist:
+            logger.error(f"Session {session_id} not found")
+            return False
+        except Exception as e:
+            logger.error(f"Error completing session: {e}")
             return False
 
     @database_sync_to_async
@@ -2024,3 +2262,24 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
             )
         except Exception as e:
             logger.error(f"Error notifying connection cancelled: {e}")
+
+    async def notify_service_finished(self, session_id, finished_by):
+        """Notify provider that service has been finished"""
+        try:
+            session_info = await self.get_session_users(session_id)
+
+            if not session_info:
+                return
+
+            # Notify provider if seeker finished
+            await self.channel_layer.group_send(
+                f'provider_{session_info["provider_id"]}',
+                {
+                    'type': 'service_finished_event',
+                    'session_id': session_id,
+                    'finished_by': finished_by
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error notifying service finished: {e}")

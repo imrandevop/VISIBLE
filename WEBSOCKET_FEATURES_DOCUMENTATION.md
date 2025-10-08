@@ -32,7 +32,21 @@ This document describes the new real-time features added to the WebSocket work a
   - Chat messages expire in 24 hours
   - Provider/Seeker search status re-enabled
 
-### 5. Session Management ✅
+### 5. Service Completion ✅
+- **Either user can mark service as finished**
+- **First to mark** completes the session
+- **Optional rating system**:
+  - Only seeker can rate provider
+  - 1-5 stars + text description
+  - Rating is private and optional
+- **Automatic actions**:
+  - Session state set to 'completed'
+  - WorkOrder status set to 'completed'
+  - Chat messages expire in 24 hours
+  - WebSocket connections closed
+  - Search statuses NOT re-enabled
+
+### 6. Session Management ✅
 - **Session creation**: When provider accepts work
 - **Connection states**: waiting → active → cancelled/completed
 - **Automatic status updates**: Search preferences disabled during active session
@@ -74,7 +88,15 @@ Manages the real-time connection between seeker and provider.
     # Cancellation
     "cancelled_by": "ForeignKey to User",
     "cancelled_at": "DateTime",
-    "completed_at": "DateTime"
+
+    # Completion
+    "completed_at": "DateTime",
+    "completed_by": "ForeignKey to User",
+
+    # Service Rating (only seeker can rate provider)
+    "rating_stars": "Integer (1-5, optional)",
+    "rating_description": "TextField (optional)",
+    "rated_at": "DateTime"
 }
 ```
 
@@ -320,6 +342,27 @@ Tracks real-time typing status.
 }
 ```
 
+---
+
+##### ✨ 10. Finish Service
+**Status**: New message type
+```json
+{
+    "type": "finish_service",
+    "session_id": "uuid-here"
+}
+```
+
+**Response**:
+```json
+{
+    "type": "service_finished",
+    "session_id": "uuid-here",
+    "message": "Service marked as finished successfully",
+    "timestamp": "2025-10-07T12:00:00Z"
+}
+```
+
 #### **Outgoing Messages (Server → Provider)**
 
 ##### 📦 Work Assignment
@@ -428,6 +471,22 @@ Tracks real-time typing status.
     "timestamp": "2025-10-07T11:00:00Z"
 }
 ```
+
+---
+
+##### ✨ Service Finished by Seeker
+**Status**: New message type
+```json
+{
+    "type": "service_finished",
+    "session_id": "uuid-here",
+    "finished_by": "seeker",
+    "message": "Seeker marked the service as finished",
+    "timestamp": "2025-10-07T12:00:00Z"
+}
+```
+
+**Note**: After receiving this message, the provider's WebSocket connection will be automatically closed.
 
 ---
 
@@ -556,6 +615,38 @@ Tracks real-time typing status.
 }
 ```
 
+---
+
+##### ✨ 8. Finish Service (with optional rating)
+**Status**: New message type
+```json
+{
+    "type": "finish_service",
+    "session_id": "uuid-here",
+    "rating_stars": 5,
+    "rating_description": "Excellent service, very professional!"
+}
+```
+
+**Fields**:
+- `session_id` (required): Session UUID
+- `rating_stars` (optional): Integer from 1-5
+- `rating_description` (optional): Text review/description
+
+**Response**:
+```json
+{
+    "type": "service_finished",
+    "session_id": "uuid-here",
+    "message": "Service marked as finished successfully",
+    "timestamp": "2025-10-07T12:00:00Z"
+}
+```
+
+**Note**: Rating is optional and private (only seeker can rate provider).
+
+---
+
 #### **Outgoing Messages (Server → Seeker)**
 
 ##### 📦 Work Response Notification
@@ -664,6 +755,22 @@ Tracks real-time typing status.
 
 ---
 
+##### ✨ Service Finished by Provider
+**Status**: New message type
+```json
+{
+    "type": "service_finished",
+    "session_id": "uuid-here",
+    "finished_by": "provider",
+    "message": "Provider marked the service as finished",
+    "timestamp": "2025-10-07T12:00:00Z"
+}
+```
+
+**Note**: After receiving this message, the seeker's WebSocket connection will be automatically closed.
+
+---
+
 ## Implementation Details
 
 ### Distance Calculation
@@ -699,6 +806,22 @@ expiry_time = session.cancelled_at (or completed_at) + timedelta(hours=24)
 
 # Background job should clean up expired messages:
 ChatMessage.objects.filter(expires_at__lte=timezone.now()).delete()
+```
+
+### Service Completion
+```python
+# Either seeker or provider can mark service as finished
+# Whoever marks it first → session becomes 'completed'
+
+# Seeker can optionally provide rating (1-5 stars + description)
+# Rating is private and only visible to system (not shown to provider immediately)
+
+# When service is marked as finished:
+- session.connection_state = 'completed'
+- work_order.status = 'completed'
+- Chat messages start 24-hour expiry countdown
+- WebSocket connections automatically close
+- Active/search statuses NOT re-enabled (different from cancellation)
 ```
 
 ---
@@ -908,6 +1031,7 @@ For questions or issues:
 | 7 | `message_read` | → Server | ✨ New | Mark message as read |
 | 8 | `typing_indicator` | → Server | ✨ New | Send typing status |
 | 9 | `cancel_connection` | → Server | ✨ New | Cancel work session |
+| 10 | `finish_service` | → Server | ✨ New | Mark service as finished |
 | | | | | |
 | 0 | `pong` | ← Server | 📦 Existing | Heartbeat response |
 | 1 | `work_assigned` | ← Server | 📦 Existing | New work assignment notification |
@@ -919,6 +1043,7 @@ For questions or issues:
 | 7 | `message_status_update` | ← Server | ✨ New | Message delivery/read status |
 | 8 | `typing_indicator` | ← Server | ✨ New | Seeker typing status |
 | 9 | `connection_cancelled` | ← Server | ✨ New | Seeker cancelled connection |
+| 10 | `service_finished` | ← Server | ✨ New | Seeker finished service |
 
 ### Seeker WebSocket - All Message Types
 
@@ -933,6 +1058,7 @@ For questions or issues:
 | 6 | `message_read` | → Server | ✨ New | Mark message as read |
 | 7 | `typing_indicator` | → Server | ✨ New | Send typing status |
 | 8 | `cancel_connection` | → Server | ✨ New | Cancel work session |
+| 9 | `finish_service` | → Server | ✨ New | Mark service as finished (with optional rating) |
 | | | | | |
 | 0 | `pong` | ← Server | 📦 Existing | Heartbeat response |
 | 1 | `work_response` | ← Server | 📦 Existing | Provider rejected work |
@@ -944,6 +1070,7 @@ For questions or issues:
 | 7 | `message_status_update` | ← Server | ✨ New | Message delivery/read status |
 | 8 | `typing_indicator` | ← Server | ✨ New | Provider typing status |
 | 9 | `connection_cancelled` | ← Server | ✨ New | Provider cancelled connection |
+| 10 | `service_finished` | ← Server | ✨ New | Provider finished service |
 
 ### Legend
 - 📦 **Existing** - Message type existed before new features
