@@ -184,6 +184,10 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                     self.periodic_distance_update(session_data['session_id'])
                 )
 
+                # Get both users' available communication mediums
+                provider_mediums = await self.get_user_communication_mediums(self.user.id)
+                seeker_mediums = await self.get_user_communication_mediums(session_data['seeker_id'])
+
                 # Send confirmation to provider
                 await self.send(text_data=json.dumps({
                     'type': 'work_accepted',
@@ -191,6 +195,8 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                     'session_id': session_data['session_id'],
                     'connection_state': 'waiting',
                     'message': 'Work accepted. Waiting for seeker to select communication mediums.',
+                    'provider_available_mediums': provider_mediums,
+                    'seeker_available_mediums': seeker_mediums,
                     'timestamp': timezone.now().isoformat()
                 }))
 
@@ -256,7 +262,7 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
         """Handle provider sharing their communication mediums"""
         try:
             session_id = data.get('session_id')
-            mediums = data.get('mediums', {})  # {'telegram': 'phone', 'whatsapp': 'phone', 'call': 'phone'}
+            mediums = data.get('mediums', {})  # Full communication mediums with enabled status and values
 
             if not session_id:
                 await self.send(text_data=json.dumps({
@@ -265,12 +271,12 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                 }))
                 return
 
-            # Validate mediums
-            valid_types = {'telegram', 'whatsapp', 'call'}
+            # Validate mediums - now supports all 7 medium types
+            valid_types = {'telegram', 'whatsapp', 'call', 'map_location', 'website', 'instagram', 'facebook'}
             if not all(k in valid_types for k in mediums.keys()):
                 await self.send(text_data=json.dumps({
                     'type': 'error',
-                    'error': 'Invalid medium types. Allowed: telegram, whatsapp, call'
+                    'error': 'Invalid medium types. Allowed: telegram, whatsapp, call, map_location, website, instagram, facebook'
                 }))
                 return
 
@@ -652,6 +658,76 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
             return profile.user_type == 'provider'
         except:
             return False
+
+    @database_sync_to_async
+    def get_user_communication_mediums(self, user_id):
+        """Get user's available communication mediums"""
+        from apps.profiles.models import UserProfile
+        from apps.profiles.communication_models import CommunicationSettings
+
+        try:
+            user_profile = UserProfile.objects.get(user_id=user_id)
+
+            try:
+                communication_settings = CommunicationSettings.objects.get(user_profile=user_profile)
+
+                # Build the communication mediums dict with only enabled mediums
+                mediums = {}
+
+                if communication_settings.telegram_enabled:
+                    mediums['telegram'] = {
+                        "enabled": True,
+                        "value": communication_settings.telegram_value or ""
+                    }
+
+                if communication_settings.whatsapp_enabled:
+                    mediums['whatsapp'] = {
+                        "enabled": True,
+                        "value": communication_settings.whatsapp_value or ""
+                    }
+
+                if communication_settings.call_enabled:
+                    mediums['call'] = {
+                        "enabled": True,
+                        "value": communication_settings.call_value or ""
+                    }
+
+                if communication_settings.map_location_enabled:
+                    mediums['map_location'] = {
+                        "enabled": True,
+                        "value": communication_settings.map_location_value or ""
+                    }
+
+                if communication_settings.website_enabled:
+                    mediums['website'] = {
+                        "enabled": True,
+                        "value": communication_settings.website_value or ""
+                    }
+
+                if communication_settings.instagram_enabled:
+                    mediums['instagram'] = {
+                        "enabled": True,
+                        "value": communication_settings.instagram_value or ""
+                    }
+
+                if communication_settings.facebook_enabled:
+                    mediums['facebook'] = {
+                        "enabled": True,
+                        "value": communication_settings.facebook_value or ""
+                    }
+
+                return mediums
+
+            except CommunicationSettings.DoesNotExist:
+                # No communication settings found, return empty dict
+                return {}
+
+        except UserProfile.DoesNotExist:
+            logger.error(f"UserProfile not found for user_id {user_id}")
+            return {}
+        except Exception as e:
+            logger.error(f"Error getting communication mediums for user {user_id}: {e}")
+            return {}
 
     @database_sync_to_async
     def create_work_session(self, work_id):
@@ -1060,6 +1136,10 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
         try:
             seeker_group = f'seeker_{session_data["seeker_id"]}'
 
+            # Get both users' available communication mediums
+            provider_mediums = await self.get_user_communication_mediums(self.user.id)
+            seeker_mediums = await self.get_user_communication_mediums(session_data['seeker_id'])
+
             await self.channel_layer.group_send(
                 seeker_group,
                 {
@@ -1067,7 +1147,9 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                     'work_id': work_id,
                     'session_id': session_data['session_id'],
                     'connection_state': 'waiting',
-                    'message': 'Provider accepted your request'
+                    'message': 'Provider accepted your request',
+                    'provider_available_mediums': provider_mediums,
+                    'seeker_available_mediums': seeker_mediums
                 }
             )
 
@@ -1469,12 +1551,12 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
                 }))
                 return
 
-            # Validate mediums (0 to 3 allowed)
-            valid_types = {'telegram', 'whatsapp', 'call'}
-            if not all(k in valid_types for k in mediums.keys()) or len(mediums) > 3:
+            # Validate mediums - now supports all 7 medium types
+            valid_types = {'telegram', 'whatsapp', 'call', 'map_location', 'website', 'instagram', 'facebook'}
+            if not all(k in valid_types for k in mediums.keys()):
                 await self.send(text_data=json.dumps({
                     'type': 'error',
-                    'error': 'Invalid mediums. Select 0-3 from: telegram, whatsapp, call'
+                    'error': 'Invalid mediums. Allowed: telegram, whatsapp, call, map_location, website, instagram, facebook'
                 }))
                 return
 
@@ -1721,6 +1803,8 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
             'session_id': event['session_id'],
             'connection_state': event['connection_state'],
             'message': event['message'],
+            'provider_available_mediums': event.get('provider_available_mediums', {}),
+            'seeker_available_mediums': event.get('seeker_available_mediums', {}),
             'timestamp': timezone.now().isoformat()
         }))
 
@@ -1827,6 +1911,76 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
             logger.error(f"Error in periodic distance update: {e}")
 
     # Database methods (reused from ProviderWorkConsumer)
+    @database_sync_to_async
+    def get_user_communication_mediums(self, user_id):
+        """Get user's available communication mediums"""
+        from apps.profiles.models import UserProfile
+        from apps.profiles.communication_models import CommunicationSettings
+
+        try:
+            user_profile = UserProfile.objects.get(user_id=user_id)
+
+            try:
+                communication_settings = CommunicationSettings.objects.get(user_profile=user_profile)
+
+                # Build the communication mediums dict with only enabled mediums
+                mediums = {}
+
+                if communication_settings.telegram_enabled:
+                    mediums['telegram'] = {
+                        "enabled": True,
+                        "value": communication_settings.telegram_value or ""
+                    }
+
+                if communication_settings.whatsapp_enabled:
+                    mediums['whatsapp'] = {
+                        "enabled": True,
+                        "value": communication_settings.whatsapp_value or ""
+                    }
+
+                if communication_settings.call_enabled:
+                    mediums['call'] = {
+                        "enabled": True,
+                        "value": communication_settings.call_value or ""
+                    }
+
+                if communication_settings.map_location_enabled:
+                    mediums['map_location'] = {
+                        "enabled": True,
+                        "value": communication_settings.map_location_value or ""
+                    }
+
+                if communication_settings.website_enabled:
+                    mediums['website'] = {
+                        "enabled": True,
+                        "value": communication_settings.website_value or ""
+                    }
+
+                if communication_settings.instagram_enabled:
+                    mediums['instagram'] = {
+                        "enabled": True,
+                        "value": communication_settings.instagram_value or ""
+                    }
+
+                if communication_settings.facebook_enabled:
+                    mediums['facebook'] = {
+                        "enabled": True,
+                        "value": communication_settings.facebook_value or ""
+                    }
+
+                return mediums
+
+            except CommunicationSettings.DoesNotExist:
+                # No communication settings found, return empty dict
+                return {}
+
+        except UserProfile.DoesNotExist:
+            logger.error(f"UserProfile not found for user_id {user_id}")
+            return {}
+        except Exception as e:
+            logger.error(f"Error getting communication mediums for user {user_id}: {e}")
+            return {}
+
     @database_sync_to_async
     def update_seeker_location(self, session_id, latitude, longitude):
         """Update seeker location in session"""
