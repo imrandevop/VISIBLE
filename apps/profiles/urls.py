@@ -25,4 +25,5 @@ urlpatterns = [
     path('work-orders/<int:work_id>/respond/', work_assignment_views.respond_to_work, name='respond_to_work'),
     path('provider-status/', work_assignment_views.update_provider_status, name='update_provider_status'),
     path('active-providers/', work_assignment_views.get_active_providers, name='get_active_providers'),
+    path('running-services/', work_assignment_views.get_running_services, name='get_running_services'),
 ]

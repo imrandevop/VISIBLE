@@ -682,3 +682,140 @@ def get_active_providers(request, version=None):
             'status': 'error',
             'message': 'An unexpected error occurred'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_running_services(request, version=None):
+    """
+    Get currently running services for both seeker and provider
+
+    Returns services that are:
+    - Accepted by provider (WorkOrder status = 'accepted')
+    - Currently active or waiting (WorkSession connection_state IN ['waiting', 'active'])
+    - Not cancelled or completed
+
+    Response is dynamic based on user type (detected from JWT token):
+    - For seeker: Shows provider details
+    - For provider: Shows seeker details
+
+    GET /api/1/profiles/running-services/
+    """
+    try:
+        user = request.user
+        user_profile = user.profile
+
+        from .work_assignment_models import WorkSession, WorkOrder
+        from apps.work_categories.models import WorkSubCategory
+        from django.conf import settings
+
+        # Determine base URL for profile photos
+        if hasattr(settings, 'ALLOWED_HOSTS') and settings.ALLOWED_HOSTS:
+            production_hosts = [host for host in settings.ALLOWED_HOSTS if host not in ['localhost', '127.0.0.1']]
+            base_domain = production_hosts[0] if production_hosts else 'localhost:8000'
+        else:
+            base_domain = 'localhost:8000'
+
+        base_url = f"https://{base_domain}" if base_domain != 'localhost:8000' else f"http://{base_domain}"
+
+        # Build query based on user type
+        if user_profile.user_type == 'seeker':
+            # Get sessions where user is the seeker
+            sessions = WorkSession.objects.filter(
+                work_order__seeker=user,
+                work_order__status='accepted',
+                connection_state__in=['waiting', 'active']
+            ).select_related(
+                'work_order',
+                'work_order__seeker',
+                'work_order__seeker__profile',
+                'work_order__provider',
+                'work_order__provider__profile'
+            ).order_by('-created_at')
+
+        elif user_profile.user_type == 'provider':
+            # Get sessions where user is the provider
+            sessions = WorkSession.objects.filter(
+                work_order__provider=user,
+                work_order__status='accepted',
+                connection_state__in=['waiting', 'active']
+            ).select_related(
+                'work_order',
+                'work_order__seeker',
+                'work_order__seeker__profile',
+                'work_order__provider',
+                'work_order__provider__profile'
+            ).order_by('-created_at')
+
+        else:
+            return Response({
+                'status': 'error',
+                'message': 'Invalid user type'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Serialize running services
+        running_services = []
+        for session in sessions:
+            work_order = session.work_order
+
+            # Get subcategory display name
+            subcategory_name = None
+            try:
+                subcategory = WorkSubCategory.objects.get(
+                    subcategory_code=work_order.sub_category_code
+                )
+                subcategory_name = subcategory.display_name
+            except WorkSubCategory.DoesNotExist:
+                subcategory_name = work_order.sub_category_code
+
+            # Determine other user based on current user type
+            if user_profile.user_type == 'seeker':
+                # Seeker viewing - show provider details
+                other_user_profile = work_order.provider.profile
+                other_user_name = other_user_profile.full_name
+                provider_name = other_user_profile.full_name
+                seeker_name = 'You'
+            else:
+                # Provider viewing - show seeker details
+                other_user_profile = work_order.seeker.profile
+                other_user_name = other_user_profile.full_name
+                provider_name = 'You'
+                seeker_name = other_user_profile.full_name
+
+            # Get profile photo URL
+            profile_photo = None
+            if other_user_profile.profile_photo:
+                profile_photo = f"{base_url}{other_user_profile.profile_photo.url}"
+
+            running_services.append({
+                'session_id': str(session.session_id),
+                'user_type': user_profile.user_type,
+                'other_user_name': other_user_name,
+                'provider_name': provider_name,
+                'seeker_name': seeker_name,
+                'profile_photo': profile_photo,
+                'service_name': subcategory_name,
+                'main_category_id': work_order.main_category_code,
+                'subcategory_id': work_order.sub_category_code,
+                'date': session.created_at.date().isoformat(),
+                'time': session.created_at.time().strftime('%H:%M:%S'),
+                'datetime': session.created_at.isoformat(),
+                'connection_state': session.connection_state,
+                'current_distance': session.get_formatted_distance() if session.current_distance_meters else None,
+            })
+
+        return Response({
+            'status': 'success',
+            'data': {
+                'running_services': running_services,
+                'total_count': len(running_services),
+                'user_type': user_profile.user_type
+            }
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Error getting running services for user {request.user.id}: {str(e)}")
+        return Response({
+            'status': 'error',
+            'message': 'An unexpected error occurred'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
