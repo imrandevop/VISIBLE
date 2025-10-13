@@ -365,8 +365,9 @@ class Wallet(BaseModel):
         """Deduct ₹20 for 24-hour online access"""
         from django.utils import timezone
         from datetime import timedelta
+        from decimal import Decimal
 
-        ONLINE_CHARGE = 20.00
+        ONLINE_CHARGE = Decimal('20.00')
 
         if self.balance < ONLINE_CHARGE:
             return False, "Insufficient balance. Please add money to your wallet."

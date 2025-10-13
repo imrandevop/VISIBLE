@@ -172,8 +172,10 @@ def provider_toggle_status(request, version=None):
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
+        logger.error(f"Provider toggle status error for user {request.user.id}: {str(e)}", exc_info=True)
         return Response({
-            "error": "An unexpected server error occurred. Please try again."
+            "error": "An unexpected server error occurred. Please try again.",
+            "debug_error": str(e) if request.user.is_staff else None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
