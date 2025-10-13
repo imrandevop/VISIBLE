@@ -347,12 +347,76 @@ class Wallet(BaseModel):
     balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     currency = models.CharField(max_length=3, default='INR')
 
+    # Online subscription tracking
+    last_online_payment_at = models.DateTimeField(null=True, blank=True, help_text="Last time ₹20 was paid for going online")
+    online_subscription_expires_at = models.DateTimeField(null=True, blank=True, help_text="When the 24-hour online period expires")
+
     def __str__(self):
         return f"{self.user_profile.full_name} - Wallet: {self.balance} {self.currency}"
+
+    def is_online_subscription_active(self):
+        """Check if the 24-hour online subscription is still active"""
+        from django.utils import timezone
+        if self.online_subscription_expires_at:
+            return timezone.now() < self.online_subscription_expires_at
+        return False
+
+    def deduct_online_charge(self):
+        """Deduct ₹20 for 24-hour online access"""
+        from django.utils import timezone
+        from datetime import timedelta
+
+        ONLINE_CHARGE = 20.00
+
+        if self.balance < ONLINE_CHARGE:
+            return False, "Insufficient balance. Please add money to your wallet."
+
+        # Deduct the charge
+        self.balance -= ONLINE_CHARGE
+        self.last_online_payment_at = timezone.now()
+        self.online_subscription_expires_at = timezone.now() + timedelta(hours=24)
+        self.save()
+
+        # Create transaction record
+        WalletTransaction.objects.create(
+            wallet=self,
+            transaction_type='debit',
+            amount=ONLINE_CHARGE,
+            description='24-hour online subscription charge',
+            balance_after=self.balance
+        )
+
+        return True, "Payment successful. You can go online/offline for the next 24 hours."
 
     class Meta:
         verbose_name = "Provider Wallet"
         verbose_name_plural = "Provider Wallets"
+
+
+class WalletTransaction(BaseModel):
+    """Transaction history for provider wallet"""
+    TRANSACTION_TYPE_CHOICES = [
+        ('credit', 'Credit'),
+        ('debit', 'Debit'),
+    ]
+
+    wallet = models.ForeignKey(
+        Wallet,
+        on_delete=models.CASCADE,
+        related_name='transactions'
+    )
+    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_TYPE_CHOICES)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    description = models.TextField(help_text="Transaction description")
+    balance_after = models.DecimalField(max_digits=10, decimal_places=2, help_text="Wallet balance after transaction")
+
+    def __str__(self):
+        return f"{self.wallet.user_profile.full_name} - {self.transaction_type.upper()} ₹{self.amount}"
+
+    class Meta:
+        verbose_name = "Wallet Transaction"
+        verbose_name_plural = "Wallet Transactions"
+        ordering = ['-created_at']
 
 
 class Offer(BaseModel):

@@ -4,7 +4,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 from django import forms
-from apps.profiles.models import UserProfile, ServicePortfolioImage, Offer
+from apps.profiles.models import UserProfile, ServicePortfolioImage, Offer, Wallet, WalletTransaction
 from apps.profiles.work_assignment_models import (
     WorkOrder,
     WorkAssignmentNotification,
@@ -599,3 +599,207 @@ class OfferAdmin(admin.ModelAdmin):
     )
 
     ordering = ['priority', '-created_at']
+
+
+class WalletTransactionInline(admin.TabularInline):
+    model = WalletTransaction
+    extra = 0
+    readonly_fields = ['transaction_type', 'amount', 'description', 'balance_after', 'created_at']
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Wallet)
+class WalletAdmin(admin.ModelAdmin):
+    list_display = [
+        'provider_name',
+        'provider_mobile',
+        'balance_display',
+        'subscription_status',
+        'subscription_expires',
+        'created_at'
+    ]
+
+    list_filter = [
+        'currency',
+        'created_at',
+        'last_online_payment_at'
+    ]
+
+    search_fields = [
+        'user_profile__full_name',
+        'user_profile__user__mobile_number',
+        'user_profile__provider_id'
+    ]
+
+    readonly_fields = [
+        'user_profile',
+        'last_online_payment_at',
+        'online_subscription_expires_at',
+        'subscription_status_detail',
+        'created_at',
+        'updated_at'
+    ]
+
+    fieldsets = (
+        ('Provider Information', {
+            'fields': ('user_profile',)
+        }),
+        ('Wallet Balance', {
+            'fields': ('balance', 'currency')
+        }),
+        ('Online Subscription', {
+            'fields': (
+                'last_online_payment_at',
+                'online_subscription_expires_at',
+                'subscription_status_detail'
+            )
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
+
+    inlines = [WalletTransactionInline]
+
+    def provider_name(self, obj):
+        return obj.user_profile.full_name
+    provider_name.short_description = 'Provider Name'
+    provider_name.admin_order_field = 'user_profile__full_name'
+
+    def provider_mobile(self, obj):
+        return obj.user_profile.user.mobile_number
+    provider_mobile.short_description = 'Mobile'
+    provider_mobile.admin_order_field = 'user_profile__user__mobile_number'
+
+    def balance_display(self, obj):
+        return f"₹{obj.balance}"
+    balance_display.short_description = 'Balance'
+    balance_display.admin_order_field = 'balance'
+
+    def subscription_status(self, obj):
+        if obj.is_online_subscription_active():
+            return format_html('<span style="color: green; font-weight: bold;">✓ Active</span>')
+        return format_html('<span style="color: red;">✗ Expired</span>')
+    subscription_status.short_description = 'Subscription'
+
+    def subscription_expires(self, obj):
+        if obj.online_subscription_expires_at:
+            from django.utils import timezone
+            if obj.is_online_subscription_active():
+                time_left = obj.online_subscription_expires_at - timezone.now()
+                hours = int(time_left.total_seconds() // 3600)
+                minutes = int((time_left.total_seconds() % 3600) // 60)
+                return f"{hours}h {minutes}m left"
+            return "Expired"
+        return "Never paid"
+    subscription_expires.short_description = 'Expires In'
+
+    def subscription_status_detail(self, obj):
+        from django.utils import timezone
+        if obj.is_online_subscription_active():
+            time_left = obj.online_subscription_expires_at - timezone.now()
+            hours = int(time_left.total_seconds() // 3600)
+            minutes = int((time_left.total_seconds() % 3600) // 60)
+            return format_html(
+                '<span style="color: green; font-weight: bold;">✓ ACTIVE</span><br>'
+                'Time remaining: {} hours {} minutes<br>'
+                'Expires at: {}',
+                hours, minutes,
+                obj.online_subscription_expires_at.strftime('%Y-%m-%d %I:%M %p')
+            )
+        elif obj.online_subscription_expires_at:
+            return format_html(
+                '<span style="color: red; font-weight: bold;">✗ EXPIRED</span><br>'
+                'Last expired at: {}',
+                obj.online_subscription_expires_at.strftime('%Y-%m-%d %I:%M %p')
+            )
+        return format_html('<span style="color: gray;">Never subscribed</span>')
+    subscription_status_detail.short_description = 'Subscription Status'
+
+
+@admin.register(WalletTransaction)
+class WalletTransactionAdmin(admin.ModelAdmin):
+    list_display = [
+        'id',
+        'provider_name',
+        'transaction_type_display',
+        'amount_display',
+        'balance_after_display',
+        'description_short',
+        'created_at'
+    ]
+
+    list_filter = [
+        'transaction_type',
+        'created_at'
+    ]
+
+    search_fields = [
+        'wallet__user_profile__full_name',
+        'wallet__user_profile__user__mobile_number',
+        'description'
+    ]
+
+    readonly_fields = [
+        'wallet',
+        'transaction_type',
+        'amount',
+        'description',
+        'balance_after',
+        'created_at',
+        'updated_at'
+    ]
+
+    fieldsets = (
+        ('Transaction Details', {
+            'fields': ('wallet', 'transaction_type', 'amount', 'balance_after')
+        }),
+        ('Description', {
+            'fields': ('description',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
+
+    def has_add_permission(self, request):
+        # Transactions should only be created through code
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        # Prevent deletion of transaction history
+        return False
+
+    def provider_name(self, obj):
+        return obj.wallet.user_profile.full_name
+    provider_name.short_description = 'Provider'
+    provider_name.admin_order_field = 'wallet__user_profile__full_name'
+
+    def transaction_type_display(self, obj):
+        if obj.transaction_type == 'credit':
+            return format_html('<span style="color: green; font-weight: bold;">⬆ CREDIT</span>')
+        return format_html('<span style="color: red; font-weight: bold;">⬇ DEBIT</span>')
+    transaction_type_display.short_description = 'Type'
+
+    def amount_display(self, obj):
+        if obj.transaction_type == 'credit':
+            return format_html('<span style="color: green;">+₹{}</span>', obj.amount)
+        return format_html('<span style="color: red;">-₹{}</span>', obj.amount)
+    amount_display.short_description = 'Amount'
+    amount_display.admin_order_field = 'amount'
+
+    def balance_after_display(self, obj):
+        return f"₹{obj.balance_after}"
+    balance_after_display.short_description = 'Balance After'
+    balance_after_display.admin_order_field = 'balance_after'
+
+    def description_short(self, obj):
+        return obj.description[:50] + '...' if len(obj.description) > 50 else obj.description
+    description_short.short_description = 'Description'
+
+    ordering = ['-created_at']

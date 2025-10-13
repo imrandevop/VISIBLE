@@ -94,6 +94,32 @@ def provider_toggle_status(request, version=None):
                 "error": f"Subcategory with code '{provider_subcategory_code}' not found or inactive under category code '{provider_category_code}'"
             }, status=status.HTTP_400_BAD_REQUEST)
 
+        # Check wallet and payment if provider is trying to go online
+        if active:
+            from apps.profiles.models import Wallet
+
+            # Get or create wallet for provider
+            wallet, created = Wallet.objects.get_or_create(
+                user_profile=user_profile,
+                defaults={
+                    'balance': 0.00,
+                    'currency': 'INR'
+                }
+            )
+
+            # Check if subscription is active
+            if not wallet.is_online_subscription_active():
+                # Need to deduct ₹20 for 24-hour access
+                success, message = wallet.deduct_online_charge()
+                if not success:
+                    # Insufficient balance - prevent going online
+                    return Response({
+                        "error": message,
+                        "status": "insufficient_balance",
+                        "current_balance": float(wallet.balance),
+                        "required_amount": 20.00
+                    }, status=status.HTTP_402_PAYMENT_REQUIRED)
+
         # Update or create provider status
         with transaction.atomic():
             provider_status, created = ProviderActiveStatus.objects.get_or_create(
