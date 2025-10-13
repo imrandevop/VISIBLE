@@ -143,18 +143,17 @@ Tracks real-time typing status.
 ```
 1. Seeker sends work assignment → WorkOrder created (status: pending)
 2. Provider receives via WebSocket
-3. Provider accepts → WorkSession created (state: waiting)
+3. Provider accepts → WorkSession created (state: active)
 4. Provider & Seeker active statuses → DISABLED
-5. Seeker selects mediums → Session state: active
-6. Distance updates start (every 30s + >50m changes)
-7. Chat can be started by either user
+5. Distance updates start automatically (every 30s + >50m changes)
+6. Chat can be started by either user
+7. Mediums can be shared by either user (optional)
 8. Either user cancels → Session state: cancelled, search re-enabled
 ```
 
 ### Session States
 
-- **waiting**: Provider accepted, waiting for seeker to select mediums
-- **active**: Seeker selected mediums, connection fully active
+- **active**: Connection fully active
 - **cancelled**: Either user cancelled the connection
 - **completed**: Service completed successfully
 
@@ -202,8 +201,8 @@ Tracks real-time typing status.
     "type": "work_accepted",
     "work_id": 123,
     "session_id": "uuid-here",
-    "connection_state": "waiting",
-    "message": "Work accepted. Waiting for seeker to select communication mediums.",
+    "connection_state": "active",
+    "message": "Work accepted. Session is now active.",
     "timestamp": "2025-10-07T10:30:00Z"
 }
 ```
@@ -410,7 +409,6 @@ Tracks real-time typing status.
         "telegram": "9123456789",
         "call": "9123456789"
     },
-    "connection_state": "active",
     "message": "Seeker has selected communication mediums",
     "timestamp": "2025-10-07T10:32:00Z"
 }
@@ -538,7 +536,7 @@ Tracks real-time typing status.
 }
 ```
 
-**Note**: Can select 0-3 mediums. This changes session state to `active`.
+**Note**: Can select 0-3 mediums (optional).
 
 **Response**:
 ```json
@@ -546,7 +544,6 @@ Tracks real-time typing status.
     "type": "mediums_selected",
     "session_id": "uuid-here",
     "mediums": {...},
-    "connection_state": "active",
     "timestamp": "2025-10-07T10:32:00Z"
 }
 ```
@@ -674,8 +671,8 @@ Tracks real-time typing status.
     "type": "work_accepted",
     "work_id": 123,
     "session_id": "uuid-here",
-    "connection_state": "waiting",
-    "message": "Provider accepted your request",
+    "connection_state": "active",
+    "message": "Provider accepted your request. Session is now active.",
     "timestamp": "2025-10-07T10:30:00Z"
 }
 ```

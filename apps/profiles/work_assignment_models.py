@@ -133,7 +133,6 @@ class WorkSession(BaseModel):
     """Real-time work session connecting seeker and provider after work acceptance"""
 
     CONNECTION_STATE_CHOICES = [
-        ('waiting', 'Waiting for medium selection'),
         ('active', 'Active connection'),
         ('cancelled', 'Cancelled'),
         ('completed', 'Completed'),
@@ -150,7 +149,7 @@ class WorkSession(BaseModel):
     session_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 
     # Connection state
-    connection_state = models.CharField(max_length=20, choices=CONNECTION_STATE_CHOICES, default='waiting')
+    connection_state = models.CharField(max_length=20, choices=CONNECTION_STATE_CHOICES, default='active')
 
     # Real-time locations (updated via WebSocket)
     seeker_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)

@@ -193,8 +193,8 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                     'type': 'work_accepted',
                     'work_id': work_id,
                     'session_id': session_data['session_id'],
-                    'connection_state': 'waiting',
-                    'message': 'Work accepted. Waiting for seeker to select communication mediums.',
+                    'connection_state': 'active',
+                    'message': 'Work accepted. Session is now active.',
                     'provider_available_mediums': provider_mediums,
                     'seeker_available_mediums': seeker_mediums,
                     'timestamp': timezone.now().isoformat()
@@ -543,7 +543,6 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
             'type': 'seeker_mediums_selected',
             'session_id': event['session_id'],
             'mediums': event['mediums'],
-            'connection_state': 'active',
             'message': 'Seeker has selected communication mediums',
             'timestamp': timezone.now().isoformat()
         }))
@@ -743,7 +742,7 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
             # Create session
             session = WorkSession.objects.create(
                 work_order=work_order,
-                connection_state='waiting',
+                connection_state='active',
                 provider_latitude=work_order.provider_latitude,
                 provider_longitude=work_order.provider_longitude,
                 seeker_latitude=work_order.seeker_latitude,
@@ -1146,8 +1145,8 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                     'type': 'work_accepted_event',
                     'work_id': work_id,
                     'session_id': session_data['session_id'],
-                    'connection_state': 'waiting',
-                    'message': 'Provider accepted your request',
+                    'connection_state': 'active',
+                    'message': 'Provider accepted your request. Session is now active.',
                     'provider_available_mediums': provider_mediums,
                     'seeker_available_mediums': seeker_mediums
                 }
@@ -1576,7 +1575,6 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
                     'type': 'mediums_selected',
                     'session_id': session_id,
                     'mediums': mediums,
-                    'connection_state': 'active',
                     'timestamp': timezone.now().isoformat()
                 }))
 
@@ -2029,17 +2027,16 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def update_seeker_mediums(self, session_id, mediums):
-        """Update seeker communication mediums and activate session"""
+        """Update seeker communication mediums"""
         from .work_assignment_models import WorkSession
 
         try:
             session = WorkSession.objects.get(session_id=session_id)
             session.seeker_selected_mediums = mediums
-            session.connection_state = 'active'
             session.mediums_shared_at = timezone.now()
             session.save()
 
-            logger.info(f"✅ Seeker mediums updated, session {session_id} now active")
+            logger.info(f"✅ Seeker mediums updated for session {session_id}")
             return True
         except WorkSession.DoesNotExist:
             return False
