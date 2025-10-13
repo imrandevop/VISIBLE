@@ -2,6 +2,11 @@
 from rest_framework import serializers
 from django.db import transaction
 from django.core.exceptions import ValidationError
+from django.core.files.base import ContentFile
+import requests
+import os
+import hashlib
+from urllib.parse import urlparse
 
 from apps.profiles.models import (
     UserProfile, DriverServiceData, PropertyServiceData,
@@ -14,10 +19,121 @@ from apps.work_categories.models import (
 from apps.verification.models import AadhaarVerification, LicenseVerification
 
 
+def download_image_from_url(url, timeout=10):
+    """
+    Download image from URL and return ContentFile
+
+    Args:
+        url: Image URL to download
+        timeout: Request timeout in seconds
+
+    Returns:
+        ContentFile object or None if download fails
+    """
+    try:
+        response = requests.get(url, timeout=timeout, stream=True)
+        response.raise_for_status()
+
+        # Get filename from URL
+        parsed_url = urlparse(url)
+        filename = os.path.basename(parsed_url.path)
+
+        # If no filename, generate one
+        if not filename or '.' not in filename:
+            content_type = response.headers.get('content-type', '')
+            ext = content_type.split('/')[-1] if '/' in content_type else 'jpg'
+            filename = f'downloaded_image.{ext}'
+
+        # Create ContentFile from response content
+        return ContentFile(response.content, name=filename)
+    except Exception as e:
+        print(f"Error downloading image from {url}: {str(e)}")
+        return None
+
+
+def is_url_string(value):
+    """Check if value is a URL string"""
+    if isinstance(value, str):
+        return value.startswith('http://') or value.startswith('https://')
+    return False
+
+
+def get_existing_image_url(profile, image_field='profile_photo'):
+    """Get existing image URL for comparison"""
+    if image_field == 'profile_photo':
+        if profile and profile.profile_photo:
+            return profile.profile_photo.url
+    return None
+
+
+def get_existing_portfolio_urls(profile):
+    """Get all existing portfolio image URLs"""
+    if not profile:
+        return []
+
+    portfolio_images = profile.service_portfolio_images.all().order_by('image_order')
+    return [img.image.url for img in portfolio_images]
+
+
+def calculate_file_hash(file_obj, chunk_size=8192):
+    """
+    Calculate MD5 hash of a file object
+
+    Args:
+        file_obj: File object to hash
+        chunk_size: Size of chunks to read
+
+    Returns:
+        MD5 hash string or None if error
+    """
+    try:
+        # Save current position
+        current_position = file_obj.tell() if hasattr(file_obj, 'tell') else 0
+
+        # Reset to beginning
+        if hasattr(file_obj, 'seek'):
+            file_obj.seek(0)
+
+        # Calculate hash
+        md5_hash = hashlib.md5()
+        while chunk := file_obj.read(chunk_size):
+            md5_hash.update(chunk)
+
+        # Restore position
+        if hasattr(file_obj, 'seek'):
+            file_obj.seek(current_position)
+
+        return md5_hash.hexdigest()
+    except Exception as e:
+        print(f"Error calculating file hash: {str(e)}")
+        return None
+
+
+def files_are_same(file1, file2):
+    """
+    Compare two file objects by their MD5 hash
+
+    Args:
+        file1: First file object
+        file2: Second file object
+
+    Returns:
+        True if files have same content, False otherwise
+    """
+    if not file1 or not file2:
+        return False
+
+    hash1 = calculate_file_hash(file1)
+    hash2 = calculate_file_hash(file2)
+
+    return hash1 == hash2 if hash1 and hash2 else False
+
+
 class ProfileSetupSerializer(serializers.Serializer):
     """
     Comprehensive serializer for complete profile setup
     Handles provider (worker, driver, properties, SOS) and seeker profiles
+    Supports both file uploads and URLs for images (profile_photo and portfolio_images)
     """
 
     # Basic Profile Fields (Required for all)
@@ -31,7 +147,8 @@ class ProfileSetupSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=100)
     date_of_birth = serializers.DateField()
     gender = serializers.ChoiceField(choices=['male', 'female'])
-    profile_photo = serializers.ImageField(required=False, allow_null=True)
+    # Changed to support both file and URL string
+    profile_photo = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     languages = serializers.ListField(
         child=serializers.CharField(),
         required=False,
@@ -40,8 +157,9 @@ class ProfileSetupSerializer(serializers.Serializer):
     )
 
     # Portfolio Images (Required for all providers, max 3)
+    # Changed to support both files and URL strings
     portfolio_images = serializers.ListField(
-        child=serializers.ImageField(),
+        child=serializers.CharField(allow_blank=True),
         required=False,
         allow_empty=True,
         max_length=3
@@ -105,7 +223,122 @@ class ProfileSetupSerializer(serializers.Serializer):
         required=False,
         allow_blank=True
     )
-    
+
+    def to_internal_value(self, data):
+        """
+        Override to handle both file and URL for images
+        Convert URLs to files if needed, or keep existing images
+        """
+        # Make a mutable copy of data
+        if hasattr(data, '_mutable'):
+            data._mutable = True
+
+        user = self.context['request'].user
+
+        # Get existing profile if it exists
+        try:
+            existing_profile = UserProfile.objects.get(user=user)
+        except UserProfile.DoesNotExist:
+            existing_profile = None
+
+        # Handle profile_photo (can be file or URL)
+        if 'profile_photo' in data and data['profile_photo']:
+            profile_photo_value = data['profile_photo']
+
+            # Check if it's a file object (already uploaded)
+            if hasattr(profile_photo_value, 'read'):
+                # It's a file, keep as is
+                pass
+            elif is_url_string(profile_photo_value):
+                # It's a URL string
+                existing_url = get_existing_image_url(existing_profile, 'profile_photo')
+
+                # Compare URLs (normalize them for comparison)
+                if existing_url and profile_photo_value.endswith(existing_url):
+                    # URL matches existing image, mark to keep it
+                    data['_keep_profile_photo'] = True
+                    data['profile_photo'] = None  # Will be handled in create()
+                else:
+                    # URL is different, download and re-upload
+                    downloaded_file = download_image_from_url(profile_photo_value)
+                    if downloaded_file:
+                        data['profile_photo'] = downloaded_file
+                        data['_keep_profile_photo'] = False
+                    else:
+                        raise serializers.ValidationError({
+                            'profile_photo': 'Failed to download image from provided URL'
+                        })
+
+        # Handle portfolio_images (can be files or URLs)
+        if 'portfolio_images' in data:
+            portfolio_images_data = data.getlist('portfolio_images') if hasattr(data, 'getlist') else data.get('portfolio_images', [])
+
+            if portfolio_images_data:
+                existing_portfolio_urls = get_existing_portfolio_urls(existing_profile)
+                processed_images = []
+                keep_indices = []
+
+                for index, img_value in enumerate(portfolio_images_data):
+                    # Check if it's a file object
+                    if hasattr(img_value, 'read'):
+                        processed_images.append(img_value)
+                    elif is_url_string(img_value):
+                        # It's a URL string
+                        url_matches_existing = False
+
+                        # Check if this URL matches any existing portfolio image
+                        for existing_url in existing_portfolio_urls:
+                            if img_value.endswith(existing_url):
+                                url_matches_existing = True
+                                keep_indices.append(index)
+                                processed_images.append(None)  # Placeholder for existing image
+                                break
+
+                        if not url_matches_existing:
+                            # URL doesn't match, download it
+                            downloaded_file = download_image_from_url(img_value)
+                            if downloaded_file:
+                                processed_images.append(downloaded_file)
+                            else:
+                                raise serializers.ValidationError({
+                                    'portfolio_images': f'Failed to download image from URL at index {index}'
+                                })
+
+                data['portfolio_images'] = processed_images
+                data['_keep_portfolio_indices'] = keep_indices
+                data['_existing_portfolio_urls'] = existing_portfolio_urls
+
+        # Call parent to_internal_value
+        # Need to temporarily change field types to handle files properly
+        original_profile_photo_field = self.fields['profile_photo']
+        original_portfolio_field = self.fields['portfolio_images']
+
+        # Temporarily replace with ImageField for proper validation
+        self.fields['profile_photo'] = serializers.ImageField(required=False, allow_null=True)
+        self.fields['portfolio_images'] = serializers.ListField(
+            child=serializers.ImageField(),
+            required=False,
+            allow_empty=True,
+            max_length=3
+        )
+
+        try:
+            result = super().to_internal_value(data)
+        finally:
+            # Restore original fields
+            self.fields['profile_photo'] = original_profile_photo_field
+            self.fields['portfolio_images'] = original_portfolio_field
+
+        # Preserve custom flags
+        if '_keep_profile_photo' in data:
+            result['_keep_profile_photo'] = data['_keep_profile_photo']
+        if '_keep_portfolio_indices' in data:
+            result['_keep_portfolio_indices'] = data['_keep_portfolio_indices']
+        if '_existing_portfolio_urls' in data:
+            result['_existing_portfolio_urls'] = data['_existing_portfolio_urls']
+
+        return result
+
     def validate(self, attrs):
         """Custom validation for business rules"""
         user_type = attrs.get('user_type')
@@ -270,6 +503,22 @@ class ProfileSetupSerializer(serializers.Serializer):
         main_category = validated_data.pop('_main_category', None)
         subcategories = validated_data.pop('_subcategories', [])
         portfolio_images = validated_data.pop('portfolio_images', [])
+        keep_profile_photo = validated_data.pop('_keep_profile_photo', False)
+        keep_portfolio_indices = validated_data.pop('_keep_portfolio_indices', [])
+        existing_portfolio_urls = validated_data.pop('_existing_portfolio_urls', [])
+
+        # Get existing profile to preserve photo if needed
+        try:
+            existing_profile = UserProfile.objects.get(user=user)
+            existing_profile_photo = existing_profile.profile_photo if keep_profile_photo else None
+        except UserProfile.DoesNotExist:
+            existing_profile = None
+            existing_profile_photo = None
+
+        # Prepare profile_photo value
+        profile_photo_value = validated_data.get('profile_photo')
+        if keep_profile_photo and existing_profile_photo:
+            profile_photo_value = existing_profile_photo
 
         # Create or update UserProfile
         profile, created = UserProfile.objects.update_or_create(
@@ -278,7 +527,7 @@ class ProfileSetupSerializer(serializers.Serializer):
                 'full_name': validated_data['full_name'],
                 'date_of_birth': validated_data['date_of_birth'],
                 'gender': validated_data['gender'],
-                'profile_photo': validated_data.get('profile_photo'),
+                'profile_photo': profile_photo_value,
                 'user_type': user_type,
                 'service_type': service_type,
                 'languages': ','.join(validated_data.get('languages', [])),
@@ -301,13 +550,34 @@ class ProfileSetupSerializer(serializers.Serializer):
                 self._create_sos_data(profile, validated_data)
 
             # Handle portfolio images for all provider types
+            # Get existing portfolio images if we need to keep any
+            existing_portfolio_objs = {}
+            if keep_portfolio_indices and existing_profile:
+                existing_imgs = list(existing_profile.service_portfolio_images.all().order_by('image_order'))
+                for idx in keep_portfolio_indices:
+                    if idx < len(existing_imgs):
+                        existing_portfolio_objs[idx] = existing_imgs[idx]
+
+            # Delete all existing portfolio images
             ServicePortfolioImage.objects.filter(user_profile=profile).delete()
+
+            # Recreate portfolio images (mix of kept and new)
             for index, image in enumerate(portfolio_images, 1):
-                ServicePortfolioImage.objects.create(
-                    user_profile=profile,
-                    image=image,
-                    image_order=index
-                )
+                if image is None and (index - 1) in existing_portfolio_objs:
+                    # This is a kept image, recreate it with existing file
+                    kept_img = existing_portfolio_objs[index - 1]
+                    ServicePortfolioImage.objects.create(
+                        user_profile=profile,
+                        image=kept_img.image,
+                        image_order=index
+                    )
+                elif image is not None:
+                    # This is a new image
+                    ServicePortfolioImage.objects.create(
+                        user_profile=profile,
+                        image=image,
+                        image_order=index
+                    )
 
         # Handle verification data
         self._handle_verification_data(profile, validated_data, service_type)
