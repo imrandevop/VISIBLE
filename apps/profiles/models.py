@@ -355,6 +355,47 @@ class Wallet(BaseModel):
         verbose_name_plural = "Provider Wallets"
 
 
+class Offer(BaseModel):
+    """Global offers shown to all providers on dashboard"""
+    offer_id = models.CharField(max_length=20, unique=True, editable=False, help_text="Auto-generated unique offer ID")
+    title = models.CharField(max_length=200, help_text="Offer title")
+    description = models.TextField(help_text="Offer description")
+    image_url = models.URLField(max_length=500, help_text="Offer image URL")
+    valid_until = models.DateTimeField(help_text="Offer validity end date")
+    is_active = models.BooleanField(default=True, help_text="Offer active status")
+    priority = models.PositiveIntegerField(default=999, help_text="Display priority (lower number = higher priority)")
+    maintenance_mode = models.BooleanField(default=False, help_text="App maintenance mode (affects all users)")
+
+    def __str__(self):
+        return f"{self.offer_id} - {self.title}"
+
+    def save(self, *args, **kwargs):
+        """Auto-generate unique offer_id if not set"""
+        if not self.offer_id:
+            self.offer_id = self.generate_unique_offer_id()
+
+        # Auto-update is_active based on valid_until
+        from django.utils import timezone
+        if self.valid_until and timezone.now() > self.valid_until:
+            self.is_active = False
+
+        super().save(*args, **kwargs)
+
+    def generate_unique_offer_id(self):
+        """Generate unique offer ID with pattern: OFF + 3 digits"""
+        counter = 1
+        while True:
+            offer_id = f"OFF{counter:03d}"
+            if not Offer.objects.filter(offer_id=offer_id).exists():
+                return offer_id
+            counter += 1
+
+    class Meta:
+        ordering = ['priority', '-created_at']
+        verbose_name = "Offer"
+        verbose_name_plural = "Offers"
+
+
 # Import communication models
 from .communication_models import CommunicationSettings
 

@@ -4,7 +4,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 from django import forms
-from apps.profiles.models import UserProfile, ServicePortfolioImage
+from apps.profiles.models import UserProfile, ServicePortfolioImage, Offer
 from apps.profiles.work_assignment_models import (
     WorkOrder,
     WorkAssignmentNotification,
@@ -547,3 +547,55 @@ class TypingIndicatorAdmin(admin.ModelAdmin):
     def user_mobile(self, obj):
         return obj.user.mobile_number if obj.user else 'N/A'
     user_mobile.short_description = 'Mobile'
+
+
+@admin.register(Offer)
+class OfferAdmin(admin.ModelAdmin):
+    list_display = [
+        'offer_id',
+        'title',
+        'priority',
+        'is_active',
+        'maintenance_mode',
+        'valid_until',
+        'created_at'
+    ]
+
+    list_filter = [
+        'is_active',
+        'maintenance_mode',
+        'priority',
+        'created_at',
+        'valid_until'
+    ]
+
+    search_fields = [
+        'offer_id',
+        'title',
+        'description'
+    ]
+
+    readonly_fields = [
+        'offer_id',
+        'created_at',
+        'updated_at'
+    ]
+
+    fieldsets = (
+        ('Offer Information', {
+            'fields': ('offer_id', 'title', 'description', 'image_url')
+        }),
+        ('Settings', {
+            'fields': ('priority', 'is_active', 'valid_until')
+        }),
+        ('System Settings', {
+            'fields': ('maintenance_mode',),
+            'description': 'Global app maintenance mode setting (affects all users)'
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
+
+    ordering = ['priority', '-created_at']

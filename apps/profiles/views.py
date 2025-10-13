@@ -337,11 +337,22 @@ def provider_dashboard_api(request, version=None):
                     "currency": "INR"
                 },
                 "services": {
-                    "completed_service": 4,
-                    "cancelled_service": 1
+                    "active_services": 2
                 },
+                "offers": [
+                    {
+                        "offer_id": "OFF001",
+                        "title": "Snapdeal Mega Sale",
+                        "description": "Get up to 70% off on all products",
+                        "image_url": "https://imagesvs.oneindia.com/img/2016/09/snapdeal-21-1474438626.jpg",
+                        "valid_until": "2025-10-31T23:59:59Z",
+                        "is_active": true,
+                        "priority": 1
+                    }
+                ],
                 "previous_services": [...],
-                "aadhaar_verified": true
+                "aadhaar_verified": true,
+                "maintenance_mode": false
             }
         }
 
@@ -417,22 +428,16 @@ def provider_dashboard_api(request, version=None):
                 "currency": "INR"
             }
 
-        # 3. Get services statistics (all time)
-        from apps.profiles.work_assignment_models import WorkOrder
+        # 3. Get active services count (services with active WorkSession)
+        from apps.profiles.work_assignment_models import WorkOrder, WorkSession
 
-        completed_count = WorkOrder.objects.filter(
-            provider=user,
-            status='completed'
-        ).count()
-
-        cancelled_count = WorkOrder.objects.filter(
-            provider=user,
-            status='cancelled'
+        active_services_count = WorkSession.objects.filter(
+            work_order__provider=user,
+            connection_state='active'
         ).count()
 
         services_data = {
-            "completed_service": completed_count,
-            "cancelled_service": cancelled_count
+            "active_services": active_services_count
         }
 
         # 4. Get previous services (5 most recent, all statuses)
@@ -463,6 +468,33 @@ def provider_dashboard_api(request, version=None):
         except AadhaarVerification.DoesNotExist:
             aadhaar_verified = False
 
+        # 6. Get active offers (sorted by priority, only active and not expired)
+        from apps.profiles.models import Offer
+        from django.utils import timezone
+
+        active_offers = Offer.objects.filter(
+            is_active=True,
+            valid_until__gt=timezone.now()
+        ).order_by('priority', '-created_at')
+
+        offers_data = []
+        for offer in active_offers:
+            offers_data.append({
+                "offer_id": offer.offer_id,
+                "title": offer.title,
+                "description": offer.description,
+                "image_url": offer.image_url,
+                "valid_until": offer.valid_until.isoformat(),
+                "is_active": offer.is_active,
+                "priority": offer.priority
+            })
+
+        # 7. Get maintenance mode status (from the first offer record, default to False)
+        maintenance_mode = False
+        first_offer = Offer.objects.first()
+        if first_offer:
+            maintenance_mode = first_offer.maintenance_mode
+
         # Build response
         response_data = {
             "status": "success",
@@ -471,8 +503,10 @@ def provider_dashboard_api(request, version=None):
                 "active_status": active_status_data,
                 "wallet": wallet_data,
                 "services": services_data,
+                "offers": offers_data,
                 "previous_services": previous_services,
-                "aadhaar_verified": aadhaar_verified
+                "aadhaar_verified": aadhaar_verified,
+                "maintenance_mode": maintenance_mode
             }
         }
 
