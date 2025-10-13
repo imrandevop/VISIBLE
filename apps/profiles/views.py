@@ -79,19 +79,7 @@ def profile_setup_api(request, version=None):
             # Future v2 logic can go here
             if api_version == 'v2':
                 pass
-        
-        # Check if user already has a complete profile
-        try:
-            existing_profile = UserProfile.objects.get(user=request.user)
-            if existing_profile.profile_complete:
-                return Response({
-                    "status": "error",
-                    "message": "Profile is already completed",
-                    "profile": ProfileResponseSerializer(existing_profile, context={'request': request}).data
-                }, status=status.HTTP_400_BAD_REQUEST)
-        except UserProfile.DoesNotExist:
-            pass  # No existing profile, continue with setup
-        
+
         # Debug logging
         print(f"PROFILE SETUP API CALLED")
         print(f"Request data keys: {list(request.data.keys())}")
@@ -482,6 +470,7 @@ def provider_dashboard_api(request, version=None):
             "status": "success",
             "message": "provider dashboard data fetched successfully",
             "data": {
+                "profile_complete": true,
                 "active_status": {
                     "is_active": false,
                     "provider_id": "WKR1023",
@@ -655,6 +644,7 @@ def provider_dashboard_api(request, version=None):
             "status": "success",
             "message": "provider dashboard data fetched successfully",
             "data": {
+                "profile_complete": user_profile.profile_complete,
                 "active_status": active_status_data,
                 "wallet": wallet_data,
                 "services": services_data,
