@@ -5,8 +5,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
 
-from apps.profiles.serializers import ProfileSetupSerializer, ProfileResponseSerializer
-from apps.profiles.models import UserProfile
+from apps.profiles.serializers import ProfileSetupSerializer, ProfileResponseSerializer, WalletSerializer
+from apps.profiles.models import UserProfile, Wallet
 from apps.core.models import ProviderActiveStatus
 
 @api_view(['POST'])
@@ -666,6 +666,107 @@ def provider_dashboard_api(request, version=None):
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error in provider dashboard API: {str(e)}")
+        return Response({
+            "status": "error",
+            "message": "An unexpected server error occurred. Please try again."
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_wallet_details_api(request, version=None):
+    """
+    Get provider's wallet details including balance, subscription status, and recent transactions
+
+    GET /api/1/profiles/wallet/
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        Success (200):
+        {
+            "status": "success",
+            "message": "Wallet details fetched successfully",
+            "data": {
+                "id": 1,
+                "balance": 850.00,
+                "currency": "INR",
+                "last_online_payment_at": "2025-10-14T10:30:00Z",
+                "online_subscription_expires_at": "2025-10-15T10:30:00Z",
+                "is_online_subscription_active": true,
+                "online_subscription_time_remaining": "12h 0m",
+                "recent_transactions": [
+                    {
+                        "id": 1,
+                        "transaction_type": "debit",
+                        "amount": 20.00,
+                        "description": "24-hour online subscription charge",
+                        "balance_after": 830.00,
+                        "created_at": "2025-10-14T10:30:00Z"
+                    },
+                    ...
+                ],
+                "created_at": "2025-10-01T08:00:00Z",
+                "updated_at": "2025-10-14T10:30:00Z"
+            }
+        }
+
+        Error (403):
+        {
+            "status": "error",
+            "message": "Only providers can access wallet details"
+        }
+
+        Error (404):
+        {
+            "status": "error",
+            "message": "Wallet not found for this provider"
+        }
+    """
+    try:
+        user = request.user
+
+        # Check if user has profile
+        try:
+            user_profile = UserProfile.objects.get(user=user)
+        except UserProfile.DoesNotExist:
+            return Response({
+                "status": "error",
+                "message": "User profile not found. Please complete profile setup."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Check if user is provider
+        if user_profile.user_type != 'provider':
+            return Response({
+                "status": "error",
+                "message": "Only providers can access wallet details"
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        # Get or create wallet
+        wallet, created = Wallet.objects.get_or_create(
+            user_profile=user_profile,
+            defaults={
+                'balance': 0.00,
+                'currency': 'INR'
+            }
+        )
+
+        # Serialize wallet data
+        serializer = WalletSerializer(wallet, context={'request': request})
+
+        return Response({
+            "status": "success",
+            "message": "Wallet details fetched successfully",
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in get_wallet_details_api: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         return Response({
             "status": "error",
             "message": "An unexpected server error occurred. Please try again."

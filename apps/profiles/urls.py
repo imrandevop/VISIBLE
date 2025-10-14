@@ -15,6 +15,9 @@ urlpatterns = [
     # Provider dashboard endpoint
     path('provider/dashboard/', views.provider_dashboard_api, name='provider_dashboard'),
 
+    # Wallet endpoint
+    path('wallet/', views.get_wallet_details_api, name='wallet_details'),
+
     # Communication settings endpoint (GET and POST)
     path('communication/settings/', communication_views.communication_settings_api, name='communication_settings'),
 
