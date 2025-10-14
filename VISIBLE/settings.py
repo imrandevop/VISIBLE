@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "apps.work_categories",
     "apps.verification",
     "apps.location_services",
+    "apps.referrals",
 
 ]
 
