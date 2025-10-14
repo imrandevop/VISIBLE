@@ -482,8 +482,11 @@ def provider_dashboard_api(request, version=None):
                     "last_updated": "2025-10-07T10:55:00Z"
                 },
                 "wallet": {
-                    "balance": 850,
-                    "currency": "INR"
+                    "balance": 850.00,
+                    "currency": "INR",
+                    "online_subscription_expires_at": "2025-10-15T10:30:00Z",
+                    "is_online_subscription_active": true,
+                    "online_subscription_time_remaining": "12h 0m"
                 },
                 "services": {
                     "active_services": 2
@@ -551,19 +554,10 @@ def provider_dashboard_api(request, version=None):
             "last_updated": provider_status.last_active_at.isoformat() if provider_status and provider_status.last_active_at else None
         }
 
-        # 2. Get wallet data
-        wallet_data = {
-            "balance": 0,
-            "currency": "INR"
-        }
-
+        # 2. Get wallet data with subscription details
         # Check if wallet exists, if not create it
         if hasattr(user_profile, 'wallet'):
             wallet = user_profile.wallet
-            wallet_data = {
-                "balance": float(wallet.balance),
-                "currency": wallet.currency
-            }
         else:
             # Create wallet if doesn't exist
             from apps.profiles.models import Wallet
@@ -572,10 +566,26 @@ def provider_dashboard_api(request, version=None):
                 balance=0.00,
                 currency='INR'
             )
-            wallet_data = {
-                "balance": 0,
-                "currency": "INR"
-            }
+
+        # Calculate subscription time remaining
+        from django.utils import timezone
+        online_subscription_time_remaining = None
+        if wallet.online_subscription_expires_at:
+            now = timezone.now()
+            if now < wallet.online_subscription_expires_at:
+                time_diff = wallet.online_subscription_expires_at - now
+                total_seconds = int(time_diff.total_seconds())
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                online_subscription_time_remaining = f"{hours}h {minutes}m"
+
+        wallet_data = {
+            "balance": float(wallet.balance),
+            "currency": wallet.currency,
+            "online_subscription_expires_at": wallet.online_subscription_expires_at.isoformat() if wallet.online_subscription_expires_at else None,
+            "is_online_subscription_active": wallet.is_online_subscription_active(),
+            "online_subscription_time_remaining": online_subscription_time_remaining
+        }
 
         # 3. Get active services count (services with active WorkSession)
         from apps.profiles.work_assignment_models import WorkOrder, WorkSession
