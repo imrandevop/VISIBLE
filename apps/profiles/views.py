@@ -122,6 +122,11 @@ def profile_setup_api(request, version=None):
             }, status=status.HTTP_400_BAD_REQUEST)
             
     except Exception as e:
+        # Always log the error to console for debugging
+        print(f"OUTER EXCEPTION IN PROFILE SETUP: {str(e)}")
+        import traceback
+        print(f"FULL TRACEBACK: {traceback.format_exc()}")
+
         return Response({
             "status": "error",
             "message": "An unexpected server error occurred. Please try again.",

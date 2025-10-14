@@ -96,7 +96,10 @@ def calculate_file_hash(file_obj, chunk_size=8192):
 
         # Calculate hash
         md5_hash = hashlib.md5()
-        while chunk := file_obj.read(chunk_size):
+        while True:
+            chunk = file_obj.read(chunk_size)
+            if not chunk:
+                break
             md5_hash.update(chunk)
 
         # Restore position
@@ -147,8 +150,8 @@ class ProfileSetupSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=100)
     date_of_birth = serializers.DateField()
     gender = serializers.ChoiceField(choices=['male', 'female'])
-    # Changed to support both file and URL string
-    profile_photo = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    # Supports both file and URL (handled in to_internal_value)
+    profile_photo = serializers.ImageField(required=False, allow_null=True)
     languages = serializers.ListField(
         child=serializers.CharField(),
         required=False,
@@ -157,9 +160,9 @@ class ProfileSetupSerializer(serializers.Serializer):
     )
 
     # Portfolio Images (Required for all providers, max 3)
-    # Changed to support both files and URL strings
+    # Supports both files and URLs (handled in to_internal_value)
     portfolio_images = serializers.ListField(
-        child=serializers.CharField(allow_blank=True),
+        child=serializers.ImageField(),
         required=False,
         allow_empty=True,
         max_length=3
@@ -229,17 +232,23 @@ class ProfileSetupSerializer(serializers.Serializer):
         Override to handle both file and URL for images
         Convert URLs to files if needed, or keep existing images
         """
-        # Make a mutable copy of data
-        if hasattr(data, '_mutable'):
-            data._mutable = True
-
-        user = self.context['request'].user
-
-        # Get existing profile if it exists
         try:
-            existing_profile = UserProfile.objects.get(user=user)
-        except UserProfile.DoesNotExist:
-            existing_profile = None
+            # Make a mutable copy of data
+            if hasattr(data, '_mutable'):
+                data._mutable = True
+
+            user = self.context['request'].user
+
+            # Get existing profile if it exists
+            try:
+                existing_profile = UserProfile.objects.get(user=user)
+            except UserProfile.DoesNotExist:
+                existing_profile = None
+        except Exception as e:
+            print(f"ERROR in to_internal_value initialization: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise
 
         # Handle profile_photo (can be file or URL)
         if 'profile_photo' in data and data['profile_photo']:
@@ -348,25 +357,7 @@ class ProfileSetupSerializer(serializers.Serializer):
                 data['_existing_portfolio_urls'] = existing_portfolio_urls
 
         # Call parent to_internal_value
-        # Need to temporarily change field types to handle files properly
-        original_profile_photo_field = self.fields['profile_photo']
-        original_portfolio_field = self.fields['portfolio_images']
-
-        # Temporarily replace with ImageField for proper validation
-        self.fields['profile_photo'] = serializers.ImageField(required=False, allow_null=True)
-        self.fields['portfolio_images'] = serializers.ListField(
-            child=serializers.ImageField(),
-            required=False,
-            allow_empty=True,
-            max_length=3
-        )
-
-        try:
-            result = super().to_internal_value(data)
-        finally:
-            # Restore original fields
-            self.fields['profile_photo'] = original_profile_photo_field
-            self.fields['portfolio_images'] = original_portfolio_field
+        result = super().to_internal_value(data)
 
         # Preserve custom flags
         if '_keep_profile_photo' in data:
