@@ -772,8 +772,9 @@ class WalletTransactionAdmin(admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        # Prevent deletion of transaction history
-        return False
+        # Allow superusers to delete transactions (e.g., when deleting a user profile)
+        # Regular users cannot delete transaction history
+        return request.user.is_superuser
 
     def provider_name(self, obj):
         return obj.wallet.user_profile.full_name
