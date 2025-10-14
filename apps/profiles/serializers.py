@@ -139,17 +139,17 @@ class ProfileSetupSerializer(serializers.Serializer):
     Supports both file uploads and URLs for images (profile_photo and portfolio_images)
     """
 
-    # Basic Profile Fields (Required for all)
-    user_type = serializers.ChoiceField(choices=['provider', 'seeker'])
+    # Basic Profile Fields (Required only on first create)
+    user_type = serializers.ChoiceField(choices=['provider', 'seeker'], required=False, allow_null=True)
     service_type = serializers.ChoiceField(
         choices=['worker', 'driver', 'properties', 'SOS'],
         required=False,
         allow_null=True,
-        help_text="Required for providers"
+        help_text="Required for providers on first create"
     )
-    full_name = serializers.CharField(max_length=100)
-    date_of_birth = serializers.DateField()
-    gender = serializers.ChoiceField(choices=['male', 'female'])
+    full_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    date_of_birth = serializers.DateField(required=False, allow_null=True)
+    gender = serializers.ChoiceField(choices=['male', 'female'], required=False, allow_null=True)
     # Supports both file and URL (handled in to_internal_value)
     profile_photo = serializers.ImageField(required=False, allow_null=True)
     languages = serializers.ListField(
@@ -370,39 +370,94 @@ class ProfileSetupSerializer(serializers.Serializer):
         return result
 
     def validate(self, attrs):
-        """Custom validation for business rules"""
+        """Custom validation for business rules - smart validation for create vs update"""
+        user = self.context['request'].user
+
+        # Check if profile already exists (update mode vs create mode)
+        try:
+            existing_profile = UserProfile.objects.get(user=user)
+            is_update = True
+        except UserProfile.DoesNotExist:
+            existing_profile = None
+            is_update = False
+
+        # Store mode in attrs for later use
+        attrs['_is_update'] = is_update
+        attrs['_existing_profile'] = existing_profile
+
+        # Get user_type from attrs or existing profile
         user_type = attrs.get('user_type')
+        if not user_type and existing_profile:
+            user_type = existing_profile.user_type
+
+        # Get service_type from attrs or existing profile
         service_type = attrs.get('service_type')
+        if not service_type and existing_profile:
+            service_type = existing_profile.service_type
 
-        # Provider validation
-        if user_type == 'provider':
-            # Service type is required for providers
-            if not service_type:
-                raise serializers.ValidationError({
-                    'service_type': 'Service type is required for providers'
-                })
+        # CREATE MODE: Validate required fields
+        if not is_update:
+            # Basic required fields for first-time setup
+            required_basic_fields = {
+                'user_type': 'User type is required for profile setup',
+                'full_name': 'Full name is required for profile setup',
+                'date_of_birth': 'Date of birth is required for profile setup',
+                'gender': 'Gender is required for profile setup'
+            }
 
-            # Portfolio images required for all provider types
-            portfolio_images = attrs.get('portfolio_images', [])
-            if not portfolio_images:
-                raise serializers.ValidationError({
-                    'portfolio_images': 'At least one portfolio image is required for all providers'
-                })
+            for field, message in required_basic_fields.items():
+                if not attrs.get(field):
+                    raise serializers.ValidationError({field: message})
 
-            # All provider types need category validation
-            self._validate_category_fields(attrs)
+            # Provider-specific validation for create
+            if user_type == 'provider':
+                if not service_type:
+                    raise serializers.ValidationError({
+                        'service_type': 'Service type is required for providers'
+                    })
 
-            # Service-specific validation
-            if service_type == 'worker':
-                self._validate_worker_fields(attrs)
-            elif service_type == 'driver':
-                self._validate_driver_fields(attrs)
-            elif service_type == 'properties':
-                self._validate_property_fields(attrs)
-            elif service_type == 'SOS':
-                self._validate_sos_fields(attrs)
+                # Portfolio images required for all provider types on create
+                portfolio_images = attrs.get('portfolio_images', [])
+                if not portfolio_images:
+                    raise serializers.ValidationError({
+                        'portfolio_images': 'At least one portfolio image is required for providers'
+                    })
 
-        # Aadhaar validation
+                # Category fields required on create
+                self._validate_category_fields(attrs, is_required=True)
+
+                # Service-specific validation
+                if service_type == 'worker':
+                    self._validate_worker_fields(attrs, is_required=True)
+                elif service_type == 'driver':
+                    self._validate_driver_fields(attrs, is_required=True)
+                elif service_type == 'properties':
+                    self._validate_property_fields(attrs, is_required=True)
+                elif service_type == 'SOS':
+                    self._validate_sos_fields(attrs, is_required=True)
+
+        # UPDATE MODE: Validate only provided fields
+        else:
+            # If user tries to change user_type or service_type, validate it's allowed
+            # (Currently allowed as per your requirement #2: no protected fields)
+
+            # If provider and updating category/service fields, validate them
+            if user_type == 'provider':
+                # Only validate category fields if they're being updated
+                if 'main_category_id' in attrs or 'sub_category_ids' in attrs:
+                    self._validate_category_fields(attrs, is_required=False)
+
+                # Only validate service-specific fields if they're being updated
+                if service_type == 'worker' and any(k in attrs for k in ['years_experience', 'skills']):
+                    self._validate_worker_fields(attrs, is_required=False)
+                elif service_type == 'driver' and any(k in attrs for k in ['vehicle_types', 'license_number', 'vehicle_registration_number', 'driving_experience_description']):
+                    self._validate_driver_fields(attrs, is_required=False)
+                elif service_type == 'properties' and any(k in attrs for k in ['property_types', 'property_title', 'property_description']):
+                    self._validate_property_fields(attrs, is_required=False)
+                elif service_type == 'SOS' and any(k in attrs for k in ['emergency_service_types', 'contact_number', 'current_location', 'emergency_description']):
+                    self._validate_sos_fields(attrs, is_required=False)
+
+        # Aadhaar validation (applies to both create and update)
         aadhaar_number = attrs.get('aadhaar_number')
         if aadhaar_number:
             if len(aadhaar_number) != 12 or not aadhaar_number.isdigit():
@@ -412,122 +467,111 @@ class ProfileSetupSerializer(serializers.Serializer):
 
         return attrs
 
-    def _validate_category_fields(self, attrs):
+    def _validate_category_fields(self, attrs, is_required=True):
         """Validate category fields required for all provider types"""
-        required_fields = {
-            'main_category_id': 'Main category is required for all providers',
-            'sub_category_ids': 'Subcategories are required for all providers'
-        }
+        if is_required:
+            required_fields = {
+                'main_category_id': 'Main category is required for all providers',
+                'sub_category_ids': 'Subcategories are required for all providers'
+            }
 
-        for field, message in required_fields.items():
-            value = attrs.get(field)
-            # Check for None, empty string, or empty list
-            if not value or (isinstance(value, list) and len(value) == 0):
-                raise serializers.ValidationError({field: message})
+            for field, message in required_fields.items():
+                value = attrs.get(field)
+                # Check for None, empty string, or empty list
+                if not value or (isinstance(value, list) and len(value) == 0):
+                    raise serializers.ValidationError({field: message})
 
-        # Validate main category exists
+        # Validate main category exists (only if provided)
         main_category_id = attrs.get('main_category_id')
-        try:
-            main_category = WorkCategory.objects.get(category_code=main_category_id, is_active=True)
-            attrs['_main_category'] = main_category
-        except WorkCategory.DoesNotExist:
-            raise serializers.ValidationError({
-                'main_category_id': f'Invalid main category: {main_category_id}'
-            })
-
-        # Validate subcategories
-        sub_category_ids = attrs.get('sub_category_ids', [])
-        if sub_category_ids:
-            valid_subcategories = WorkSubCategory.objects.filter(
-                category=main_category,
-                subcategory_code__in=sub_category_ids,
-                is_active=True
-            )
-            found_codes = [sub.subcategory_code for sub in valid_subcategories]
-            invalid_codes = [code for code in sub_category_ids if code not in found_codes]
-
-            if invalid_codes:
+        if main_category_id:
+            try:
+                main_category = WorkCategory.objects.get(category_code=main_category_id, is_active=True)
+                attrs['_main_category'] = main_category
+            except WorkCategory.DoesNotExist:
                 raise serializers.ValidationError({
-                    'sub_category_ids': f'Invalid subcategories: {", ".join(invalid_codes)}'
+                    'main_category_id': f'Invalid main category: {main_category_id}'
                 })
-            attrs['_subcategories'] = valid_subcategories
 
-    def _validate_worker_fields(self, attrs):
+            # Validate subcategories (only if provided)
+            sub_category_ids = attrs.get('sub_category_ids', [])
+            if sub_category_ids:
+                valid_subcategories = WorkSubCategory.objects.filter(
+                    category=main_category,
+                    subcategory_code__in=sub_category_ids,
+                    is_active=True
+                )
+                found_codes = [sub.subcategory_code for sub in valid_subcategories]
+                invalid_codes = [code for code in sub_category_ids if code not in found_codes]
+
+                if invalid_codes:
+                    raise serializers.ValidationError({
+                        'sub_category_ids': f'Invalid subcategories: {", ".join(invalid_codes)}'
+                    })
+                attrs['_subcategories'] = valid_subcategories
+
+    def _validate_worker_fields(self, attrs, is_required=True):
         """Validate worker-specific required fields"""
+        if is_required:
+            required_fields = {
+                'years_experience': 'Years of experience is required for workers',
+                'skills': 'Skills description is required for workers'
+            }
 
+            for field, message in required_fields.items():
+                value = attrs.get(field)
+                if not value and value != 0:  # Allow 0 for years_experience
+                    raise serializers.ValidationError({field: message})
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        required_fields = {
-            'years_experience': 'Years of experience is required for workers',
-            'skills': 'Skills description is required for workers'
-        }
-
-        for field, message in required_fields.items():
-            value = attrs.get(field)
-            if not value:
-                raise serializers.ValidationError({field: message})
-
-    def _validate_driver_fields(self, attrs):
+    def _validate_driver_fields(self, attrs, is_required=True):
         """Validate driver-specific required fields"""
-        required_fields = {
-            'vehicle_types': 'Vehicle types are required for drivers',
-            'license_number': 'License number is required for drivers',
-            'vehicle_registration_number': 'Vehicle registration number is required for drivers',
-            'years_experience': 'Years of experience is required for drivers',
-            'driving_experience_description': 'Driving experience description is required for drivers'
-        }
+        if is_required:
+            required_fields = {
+                'vehicle_types': 'Vehicle types are required for drivers',
+                'license_number': 'License number is required for drivers',
+                'vehicle_registration_number': 'Vehicle registration number is required for drivers',
+                'years_experience': 'Years of experience is required for drivers',
+                'driving_experience_description': 'Driving experience description is required for drivers'
+            }
 
-        for field, message in required_fields.items():
-            if not attrs.get(field):
-                raise serializers.ValidationError({field: message})
+            for field, message in required_fields.items():
+                if not attrs.get(field):
+                    raise serializers.ValidationError({field: message})
 
-    def _validate_property_fields(self, attrs):
+    def _validate_property_fields(self, attrs, is_required=True):
         """Validate property-specific required fields"""
-        required_fields = {
-            'property_types': 'Property types are required for property services',
-            'property_title': 'Property title is required for property services',
-            'property_description': 'Property description is required for property services'
-        }
+        if is_required:
+            required_fields = {
+                'property_types': 'Property types are required for property services',
+                'property_title': 'Property title is required for property services',
+                'property_description': 'Property description is required for property services'
+            }
 
-        for field, message in required_fields.items():
-            if not attrs.get(field):
-                raise serializers.ValidationError({field: message})
+            for field, message in required_fields.items():
+                if not attrs.get(field):
+                    raise serializers.ValidationError({field: message})
 
-    def _validate_sos_fields(self, attrs):
+    def _validate_sos_fields(self, attrs, is_required=True):
         """Validate SOS/Emergency-specific required fields"""
-        required_fields = {
-            'emergency_service_types': 'Emergency service types are required for SOS services',
-            'contact_number': 'Contact number is required for SOS services',
-            'current_location': 'Current location is required for SOS services',
-            'emergency_description': 'Emergency description is required for SOS services'
-        }
+        if is_required:
+            required_fields = {
+                'emergency_service_types': 'Emergency service types are required for SOS services',
+                'contact_number': 'Contact number is required for SOS services',
+                'current_location': 'Current location is required for SOS services',
+                'emergency_description': 'Emergency description is required for SOS services'
+            }
 
-        for field, message in required_fields.items():
-            if not attrs.get(field):
-                raise serializers.ValidationError({field: message})
+            for field, message in required_fields.items():
+                if not attrs.get(field):
+                    raise serializers.ValidationError({field: message})
     
     @transaction.atomic
     def create(self, validated_data):
-        """Create complete profile with all related data"""
+        """Create or update profile with partial data support"""
         user = self.context['request'].user
-        user_type = validated_data['user_type']
-        service_type = validated_data.get('service_type')
+
+        # Check if this is an update
+        is_update = validated_data.pop('_is_update', False)
+        existing_profile = validated_data.pop('_existing_profile', None)
 
         # Extract data that needs special handling
         main_category = validated_data.pop('_main_category', None)
@@ -537,77 +581,116 @@ class ProfileSetupSerializer(serializers.Serializer):
         keep_portfolio_indices = validated_data.pop('_keep_portfolio_indices', [])
         existing_portfolio_urls = validated_data.pop('_existing_portfolio_urls', [])
 
-        # Get existing profile to preserve photo if needed
-        try:
-            existing_profile = UserProfile.objects.get(user=user)
-            existing_profile_photo = existing_profile.profile_photo if keep_profile_photo else None
-        except UserProfile.DoesNotExist:
-            existing_profile = None
-            existing_profile_photo = None
+        # Get user_type and service_type (from validated_data or existing profile)
+        user_type = validated_data.get('user_type')
+        if not user_type and existing_profile:
+            user_type = existing_profile.user_type
 
-        # Prepare profile_photo value
-        profile_photo_value = validated_data.get('profile_photo')
-        if keep_profile_photo and existing_profile_photo:
-            profile_photo_value = existing_profile_photo
+        service_type = validated_data.get('service_type')
+        if not service_type and existing_profile:
+            service_type = existing_profile.service_type
+
+        # Prepare defaults dict for update_or_create
+        # For update mode: only include fields that are actually in validated_data
+        # For create mode: all fields are required and present
+        defaults = {}
+
+        if 'full_name' in validated_data:
+            defaults['full_name'] = validated_data['full_name']
+        elif existing_profile:
+            defaults['full_name'] = existing_profile.full_name
+
+        if 'date_of_birth' in validated_data:
+            defaults['date_of_birth'] = validated_data['date_of_birth']
+        elif existing_profile:
+            defaults['date_of_birth'] = existing_profile.date_of_birth
+
+        if 'gender' in validated_data:
+            defaults['gender'] = validated_data['gender']
+        elif existing_profile:
+            defaults['gender'] = existing_profile.gender
+
+        # Handle profile photo
+        if keep_profile_photo and existing_profile and existing_profile.profile_photo:
+            defaults['profile_photo'] = existing_profile.profile_photo
+        elif 'profile_photo' in validated_data and validated_data['profile_photo']:
+            defaults['profile_photo'] = validated_data['profile_photo']
+        elif existing_profile and existing_profile.profile_photo:
+            defaults['profile_photo'] = existing_profile.profile_photo
+
+        # user_type and service_type
+        defaults['user_type'] = user_type
+        defaults['service_type'] = service_type
+
+        # Languages
+        if 'languages' in validated_data:
+            defaults['languages'] = ','.join(validated_data.get('languages', []))
+        elif existing_profile:
+            defaults['languages'] = existing_profile.languages
+
+        # These are always set
+        defaults['profile_complete'] = False  # Will be updated after service data creation
+        defaults['can_access_app'] = False
 
         # Create or update UserProfile
         profile, created = UserProfile.objects.update_or_create(
             user=user,
-            defaults={
-                'full_name': validated_data['full_name'],
-                'date_of_birth': validated_data['date_of_birth'],
-                'gender': validated_data['gender'],
-                'profile_photo': profile_photo_value,
-                'user_type': user_type,
-                'service_type': service_type,
-                'languages': ','.join(validated_data.get('languages', [])),
-                'profile_complete': False,  # Will be updated after service data creation
-                'can_access_app': False
-            }
+            defaults=defaults
         )
 
         # Handle service-specific data for providers
         if user_type == 'provider':
-            # All providers need work selection data
-            self._create_worker_data(profile, validated_data, main_category, subcategories)
+            # Update work selection data only if category fields are provided
+            if main_category is not None or subcategories:
+                self._create_worker_data(profile, validated_data, main_category, subcategories)
 
-            # Create service-specific data
+            # Update service-specific data only if relevant fields are provided
             if service_type == 'driver':
-                self._create_driver_data(profile, validated_data)
+                # Check if any driver fields are provided
+                driver_fields = ['vehicle_types', 'license_number', 'vehicle_registration_number', 'years_experience', 'driving_experience_description']
+                if any(field in validated_data for field in driver_fields):
+                    self._create_driver_data(profile, validated_data)
             elif service_type == 'properties':
-                self._create_property_data(profile, validated_data)
+                # Check if any property fields are provided
+                property_fields = ['property_types', 'property_title', 'parking_availability', 'furnishing_type', 'property_description']
+                if any(field in validated_data for field in property_fields):
+                    self._create_property_data(profile, validated_data)
             elif service_type == 'SOS':
-                self._create_sos_data(profile, validated_data)
+                # Check if any SOS fields are provided
+                sos_fields = ['emergency_service_types', 'contact_number', 'current_location', 'emergency_description']
+                if any(field in validated_data for field in sos_fields):
+                    self._create_sos_data(profile, validated_data)
 
-            # Handle portfolio images for all provider types
-            # Get existing portfolio images if we need to keep any
-            existing_portfolio_objs = {}
-            if keep_portfolio_indices and existing_profile:
-                existing_imgs = list(existing_profile.service_portfolio_images.all().order_by('image_order'))
-                for idx in keep_portfolio_indices:
-                    if idx < len(existing_imgs):
-                        existing_portfolio_objs[idx] = existing_imgs[idx]
+            # Handle portfolio images only if they are provided
+            if portfolio_images:
+                # Get existing portfolio images if we need to keep any
+                existing_portfolio_objs = {}
+                if keep_portfolio_indices and existing_profile:
+                    existing_imgs = list(existing_profile.service_portfolio_images.all().order_by('image_order'))
+                    for idx in keep_portfolio_indices:
+                        if idx < len(existing_imgs):
+                            existing_portfolio_objs[idx] = existing_imgs[idx]
 
-            # Delete all existing portfolio images
-            ServicePortfolioImage.objects.filter(user_profile=profile).delete()
+                # Delete all existing portfolio images
+                ServicePortfolioImage.objects.filter(user_profile=profile).delete()
 
-            # Recreate portfolio images (mix of kept and new)
-            for index, image in enumerate(portfolio_images, 1):
-                if image is None and (index - 1) in existing_portfolio_objs:
-                    # This is a kept image, recreate it with existing file
-                    kept_img = existing_portfolio_objs[index - 1]
-                    ServicePortfolioImage.objects.create(
-                        user_profile=profile,
-                        image=kept_img.image,
-                        image_order=index
-                    )
-                elif image is not None:
-                    # This is a new image
-                    ServicePortfolioImage.objects.create(
-                        user_profile=profile,
-                        image=image,
-                        image_order=index
-                    )
+                # Recreate portfolio images (mix of kept and new)
+                for index, image in enumerate(portfolio_images, 1):
+                    if image is None and (index - 1) in existing_portfolio_objs:
+                        # This is a kept image, recreate it with existing file
+                        kept_img = existing_portfolio_objs[index - 1]
+                        ServicePortfolioImage.objects.create(
+                            user_profile=profile,
+                            image=kept_img.image,
+                            image_order=index
+                        )
+                    elif image is not None:
+                        # This is a new image
+                        ServicePortfolioImage.objects.create(
+                            user_profile=profile,
+                            image=image,
+                            image_order=index
+                        )
 
         # Handle verification data
         self._handle_verification_data(profile, validated_data, service_type)
