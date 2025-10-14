@@ -247,8 +247,24 @@ class ProfileSetupSerializer(serializers.Serializer):
 
             # Check if it's a file object (already uploaded)
             if hasattr(profile_photo_value, 'read'):
-                # It's a file, keep as is
-                pass
+                # It's a file, check if same as existing file
+                if existing_profile and existing_profile.profile_photo:
+                    try:
+                        # Compare uploaded file with existing file
+                        if files_are_same(profile_photo_value, existing_profile.profile_photo):
+                            # Files are identical, keep existing
+                            data['_keep_profile_photo'] = True
+                            data['profile_photo'] = None
+                        else:
+                            # Files are different, will upload new
+                            data['_keep_profile_photo'] = False
+                    except Exception as e:
+                        # If comparison fails, upload as new
+                        print(f"Error comparing profile photos: {str(e)}")
+                        data['_keep_profile_photo'] = False
+                else:
+                    # No existing profile photo, upload as new
+                    data['_keep_profile_photo'] = False
             elif is_url_string(profile_photo_value):
                 # It's a URL string
                 existing_url = get_existing_image_url(existing_profile, 'profile_photo')
@@ -275,13 +291,36 @@ class ProfileSetupSerializer(serializers.Serializer):
 
             if portfolio_images_data:
                 existing_portfolio_urls = get_existing_portfolio_urls(existing_profile)
+                existing_portfolio_objs = []
+
+                # Get existing portfolio file objects for comparison
+                if existing_profile:
+                    existing_portfolio_objs = list(existing_profile.service_portfolio_images.all().order_by('image_order'))
+
                 processed_images = []
                 keep_indices = []
 
                 for index, img_value in enumerate(portfolio_images_data):
                     # Check if it's a file object
                     if hasattr(img_value, 'read'):
-                        processed_images.append(img_value)
+                        # It's a file, check if same as any existing file
+                        file_matches_existing = False
+
+                        for existing_idx, existing_img_obj in enumerate(existing_portfolio_objs):
+                            try:
+                                if files_are_same(img_value, existing_img_obj.image):
+                                    # Files are identical, keep existing
+                                    file_matches_existing = True
+                                    keep_indices.append(index)
+                                    processed_images.append(None)  # Placeholder for existing image
+                                    break
+                            except Exception as e:
+                                print(f"Error comparing portfolio image {index} with existing {existing_idx}: {str(e)}")
+                                continue
+
+                        if not file_matches_existing:
+                            # File doesn't match any existing, upload as new
+                            processed_images.append(img_value)
                     elif is_url_string(img_value):
                         # It's a URL string
                         url_matches_existing = False
