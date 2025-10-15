@@ -215,7 +215,7 @@ def parse_multipart_array_fields(data):
     result = {}
 
     # Track which fields need processing
-    array_fields = {}  # {field_name: {index: {key: value}}}
+    array_fields = {}  # {field_name: {index: value or {key: value}}}
 
     # Iterate through all keys in the data
     all_keys = list(data.keys())
@@ -233,7 +233,16 @@ def parse_multipart_array_fields(data):
                     index = int(index_str)
                     if field_name not in array_fields:
                         array_fields[field_name] = {}
-                    array_fields[field_name][index] = data.get(key)
+
+                    # Get the value (could be file, string, etc.)
+                    value = data.get(key)
+
+                    # Check if this index already has a dict (from nested keys)
+                    if index in array_fields[field_name] and isinstance(array_fields[field_name][index], dict):
+                        # Already has dict structure from nested keys, skip simple value
+                        continue
+
+                    array_fields[field_name][index] = value
                 except ValueError:
                     continue
 
@@ -244,17 +253,15 @@ def parse_multipart_array_fields(data):
                     index = int(index_str)
                     if field_name not in array_fields:
                         array_fields[field_name] = {}
-                    if index not in array_fields[field_name]:
+
+                    # Initialize as dict if not present or if it was a simple value
+                    if index not in array_fields[field_name] or not isinstance(array_fields[field_name][index], dict):
                         array_fields[field_name][index] = {}
 
                     # Handle special cases for image/file fields
                     value = data.get(key)
                     if value == '' or value == 'null':
                         value = None
-
-                    # Store as dict if it's not already
-                    if not isinstance(array_fields[field_name][index], dict):
-                        array_fields[field_name][index] = {}
 
                     array_fields[field_name][index][dict_key] = value
                 except ValueError:
