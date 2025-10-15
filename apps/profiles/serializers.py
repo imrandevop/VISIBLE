@@ -162,7 +162,7 @@ class ProfileSetupSerializer(serializers.Serializer):
     # Portfolio Images (Required for all providers, max 3)
     # Supports both files and URLs (handled in to_internal_value)
     portfolio_images = serializers.ListField(
-        child=serializers.ImageField(),
+        child=serializers.ImageField(allow_null=True),
         required=False,
         allow_empty=True,
         max_length=3

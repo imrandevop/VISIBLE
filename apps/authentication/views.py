@@ -5,7 +5,7 @@ from django.views.decorators.http import require_http_methods
 from django.utils.decorators import method_decorator
 from django.views import View
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
@@ -249,7 +249,108 @@ def refresh_token_api(request, version=None):
             "status": "error",
             "message": "An unexpected server error occurred. Please try again."
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_account_api(request, version=None):
+    """
+    API endpoint to delete user account permanently
+
+    DELETE /api/1/authentication/delete-account/
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        Success (200):
+        {
+            "status": "success",
+            "message": "Your account has been deleted successfully"
+        }
+
+        Error (401):
+        {
+            "status": "error",
+            "message": "Authentication required"
+        }
+
+        Error (500):
+        {
+            "status": "error",
+            "message": "Failed to delete account. Please try again."
+        }
+    """
+    try:
+        # Get authenticated user from JWT token
+        user = request.user
+
+        # Handle versioning
+        if hasattr(request, 'version'):
+            api_version = request.version
+            # Future version-specific logic can go here
+            if api_version == 'v2':
+                pass
+
+        # Store mobile number for logging (optional)
+        mobile_number = user.mobile_number
+        user_id = user.id
+
+        try:
+            # Import necessary models and utilities
+            from apps.profiles.models import UserProfile
+            import os
+            from django.conf import settings
+
+            # Delete associated media files before deleting user
+            try:
+                # Get user profile if exists
+                if hasattr(user, 'profile'):
+                    user_profile = user.profile
+
+                    # Delete profile photo if exists
+                    if user_profile.profile_photo:
+                        if os.path.isfile(user_profile.profile_photo.path):
+                            os.remove(user_profile.profile_photo.path)
+
+                    # Delete portfolio images if exist
+                    for portfolio_image in user_profile.service_portfolio_images.all():
+                        if portfolio_image.image:
+                            if os.path.isfile(portfolio_image.image.path):
+                                os.remove(portfolio_image.image.path)
+
+            except Exception as file_error:
+                # Log file deletion error but continue with account deletion
+                pass
+
+            # Delete the user account (cascade will handle related data)
+            # This will automatically delete:
+            # - UserProfile
+            # - ServicePortfolioImage
+            # - DriverServiceData, PropertyServiceData, SOSServiceData
+            # - Wallet and WalletTransaction
+            # - ProviderRating, ProviderReview
+            # - WorkOrder, WorkSession, ChatMessage
+            # - CommunicationSettings
+            # - And all other related models with CASCADE
+            user.delete()
+
+            return Response({
+                "status": "success",
+                "message": "Your account has been deleted successfully"
+            }, status=status.HTTP_200_OK)
+
+        except Exception as deletion_error:
+            return Response({
+                "status": "error",
+                "message": "Failed to delete account. Please try again."
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    except Exception as e:
+        return Response({
+            "status": "error",
+            "message": "An unexpected server error occurred. Please try again."
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 def auth_info(request):
@@ -257,5 +358,5 @@ def auth_info(request):
     return JsonResponse({
         "app": "authentication",
         "status": "active",
-        "endpoints": ["send-otp", "verify-otp", "refresh-token"]
+        "endpoints": ["send-otp", "verify-otp", "refresh-token", "delete-account"]
     })
