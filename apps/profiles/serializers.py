@@ -748,24 +748,37 @@ class ProfileSetupSerializer(serializers.Serializer):
                     index = operation.get('index')
                     new_image = operation.get('image')
 
+                    print(f"DEBUG: Processing operation - index={index}, image type={type(new_image)}")
+
                     # Find existing image at this index
                     existing_at_index = next((img for img in existing_imgs if img.image_order == index), None)
 
                     if new_image is None and existing_at_index:
                         # Delete operation: remove image at this index
+                        print(f"DEBUG: Deleting image at index {index}")
                         existing_at_index.delete()
                         existing_imgs.remove(existing_at_index)  # Remove from our tracking list
                     elif new_image is not None and existing_at_index:
                         # Replace operation: update image at this index
-                        existing_at_index.image = new_image
-                        existing_at_index.save()
+                        # Verify new_image is actually a file object
+                        if hasattr(new_image, 'read') or hasattr(new_image, 'file'):
+                            print(f"DEBUG: Replacing image at index {index}")
+                            existing_at_index.image = new_image
+                            existing_at_index.save()
+                        else:
+                            print(f"ERROR: new_image at index {index} is not a valid file: {type(new_image)}")
                     elif new_image is not None and not existing_at_index:
                         # Index doesn't exist, create new image with specified index
-                        ServicePortfolioImage.objects.create(
-                            user_profile=profile,
-                            image=new_image,
-                            image_order=index
-                        )
+                        # Verify new_image is actually a file object
+                        if hasattr(new_image, 'read') or hasattr(new_image, 'file'):
+                            print(f"DEBUG: Creating new image at index {index}")
+                            ServicePortfolioImage.objects.create(
+                                user_profile=profile,
+                                image=new_image,
+                                image_order=index
+                            )
+                        else:
+                            print(f"ERROR: new_image for new index {index} is not a valid file: {type(new_image)}")
 
                 # Step 2: Add new images (without indices)
                 # Calculate next available order
