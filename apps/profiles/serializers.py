@@ -389,10 +389,13 @@ class ProfileSetupSerializer(serializers.Serializer):
             # Parse multipart array fields from Flutter (portfolio_images[0][index], languages[0], etc.)
             parsed_arrays = parse_multipart_array_fields(data)
 
-            # Merge parsed arrays back into data
+            # Store parsed arrays in a separate dict to avoid QueryDict issues
+            # We'll access these directly instead of through data['field_name']
+            data._parsed_arrays = parsed_arrays
+
+            # Debug logging
             for field_name, field_value in parsed_arrays.items():
                 if field_name in ['portfolio_images', 'languages', 'sub_category_ids']:
-                    data[field_name] = field_value
                     print(f"DEBUG: Parsed {field_name} from multipart: {field_value}")
                     print(f"DEBUG: {field_name} types: {[type(item).__name__ for item in field_value]}")
 
@@ -454,15 +457,11 @@ class ProfileSetupSerializer(serializers.Serializer):
                         })
 
         # Handle portfolio_images (can be files, URLs, or dict operations)
-        if 'portfolio_images' in data:
+        # Check if we have parsed arrays from multipart format
+        if hasattr(data, '_parsed_arrays') and 'portfolio_images' in data._parsed_arrays:
             try:
-                # If we already parsed multipart arrays, data['portfolio_images'] will be a list
-                # Don't use getlist() in that case, as it will wrap our list in another list
-                portfolio_images_data = data.get('portfolio_images', [])
-
-                # Ensure it's a list
-                if not isinstance(portfolio_images_data, list):
-                    portfolio_images_data = [portfolio_images_data] if portfolio_images_data else []
+                # Use the pre-parsed array data directly
+                portfolio_images_data = data._parsed_arrays['portfolio_images']
 
                 print(f"DEBUG: Processing {len(portfolio_images_data)} portfolio images")
                 for idx, img in enumerate(portfolio_images_data):
