@@ -416,12 +416,8 @@ class ProfileSetupSerializer(serializers.Serializer):
                         'service_type': 'Service type is required for providers'
                     })
 
-                # Portfolio images required for all provider types on create
+                # Portfolio images are no longer required
                 portfolio_images = attrs.get('portfolio_images', [])
-                if not portfolio_images:
-                    raise serializers.ValidationError({
-                        'portfolio_images': 'At least one portfolio image is required for providers'
-                    })
 
                 # Category fields required on create
                 self._validate_category_fields(attrs, is_required=True)
@@ -624,7 +620,16 @@ class ProfileSetupSerializer(serializers.Serializer):
 
         # Languages
         if 'languages' in validated_data:
-            defaults['languages'] = ','.join(validated_data.get('languages', []))
+            new_languages = validated_data.get('languages', [])
+            if existing_profile and existing_profile.languages:
+                # Get existing languages as a set
+                existing_languages = set(existing_profile.languages.split(','))
+                # Add new languages to the set (automatically handles duplicates)
+                existing_languages.update(new_languages)
+                # Convert back to comma-separated string
+                defaults['languages'] = ','.join(existing_languages)
+            else:
+                defaults['languages'] = ','.join(new_languages)
         elif existing_profile:
             defaults['languages'] = existing_profile.languages
 
@@ -663,34 +668,57 @@ class ProfileSetupSerializer(serializers.Serializer):
 
             # Handle portfolio images only if they are provided
             if portfolio_images:
-                # Get existing portfolio images if we need to keep any
-                existing_portfolio_objs = {}
-                if keep_portfolio_indices and existing_profile:
+                # Get existing portfolio images
+                existing_imgs = []
+                max_order = 0
+                if existing_profile:
                     existing_imgs = list(existing_profile.service_portfolio_images.all().order_by('image_order'))
-                    for idx in keep_portfolio_indices:
-                        if idx < len(existing_imgs):
-                            existing_portfolio_objs[idx] = existing_imgs[idx]
-
-                # Delete all existing portfolio images
-                ServicePortfolioImage.objects.filter(user_profile=profile).delete()
-
-                # Recreate portfolio images (mix of kept and new)
-                for index, image in enumerate(portfolio_images, 1):
-                    if image is None and (index - 1) in existing_portfolio_objs:
-                        # This is a kept image, recreate it with existing file
-                        kept_img = existing_portfolio_objs[index - 1]
-                        ServicePortfolioImage.objects.create(
-                            user_profile=profile,
-                            image=kept_img.image,
-                            image_order=index
-                        )
-                    elif image is not None:
-                        # This is a new image
-                        ServicePortfolioImage.objects.create(
-                            user_profile=profile,
-                            image=image,
-                            image_order=index
-                        )
+                    if existing_imgs:
+                        max_order = max(img.image_order for img in existing_imgs)
+                
+                # Check if we have image indices specified
+                has_indices = False
+                image_indices = {}
+                
+                # Process portfolio images with indices
+                for i, img_data in enumerate(portfolio_images):
+                    if isinstance(img_data, dict) and 'index' in img_data:
+                        has_indices = True
+                        index = img_data.get('index')
+                        image = img_data.get('image')
+                        image_indices[index] = image
+                
+                if has_indices:
+                    # Handle indexed images (replace, add, or delete)
+                    for index, image in image_indices.items():
+                        # Find if there's an existing image at this index
+                        existing_at_index = next((img for img in existing_imgs if img.image_order == index), None)
+                        
+                        if image is None and existing_at_index:
+                            # Delete image at this index
+                            existing_at_index.delete()
+                        elif image is not None and existing_at_index:
+                            # Replace image at this index
+                            existing_at_index.image = image
+                            existing_at_index.save()
+                        elif image is not None:
+                            # Add new image at this index
+                            ServicePortfolioImage.objects.create(
+                                user_profile=profile,
+                                image=image,
+                                image_order=index
+                            )
+                else:
+                    # No indices specified, add new images without replacing existing ones
+                    next_order = max_order + 1
+                    for image in portfolio_images:
+                        if image is not None:
+                            ServicePortfolioImage.objects.create(
+                                user_profile=profile,
+                                image=image,
+                                image_order=next_order
+                            )
+                            next_order += 1
 
         # Handle verification data
         self._handle_verification_data(profile, validated_data, service_type)
@@ -711,13 +739,51 @@ class ProfileSetupSerializer(serializers.Serializer):
             }
         )
 
-        # Clear existing subcategories and add new ones
-        UserWorkSubCategory.objects.filter(user_work_selection=work_selection).delete()
-        for subcategory in subcategories:
-            UserWorkSubCategory.objects.create(
-                user_work_selection=work_selection,
-                sub_category=subcategory
-            )
+        # Check if we have subcategory indices for targeted updates
+        has_indices = False
+        subcategory_indices = {}
+        
+        # Process subcategories with indices if they're in dict format
+        for sub_data in subcategories:
+            if isinstance(sub_data, dict) and 'index' in sub_data:
+                has_indices = True
+                index = sub_data.get('index')
+                subcategory = sub_data.get('subcategory')
+                subcategory_indices[index] = subcategory
+        
+        if has_indices:
+            # Handle indexed subcategories (replace, add, or delete)
+            existing_subs = list(UserWorkSubCategory.objects.filter(user_work_selection=work_selection).order_by('id'))
+            
+            for index, subcategory in subcategory_indices.items():
+                if index < len(existing_subs):
+                    # Index exists
+                    if subcategory is None:
+                        # Delete subcategory at this index
+                        existing_subs[index].delete()
+                    else:
+                        # Replace subcategory at this index
+                        existing_subs[index].sub_category = subcategory
+                        existing_subs[index].save()
+                elif subcategory is not None:
+                    # Add new subcategory
+                    UserWorkSubCategory.objects.create(
+                        user_work_selection=work_selection,
+                        sub_category=subcategory
+                    )
+        else:
+            # No indices specified, add new subcategories without replacing existing ones
+            existing_sub_ids = set(UserWorkSubCategory.objects.filter(
+                user_work_selection=work_selection
+            ).values_list('sub_category_id', flat=True))
+            
+            # Only add subcategories that don't already exist
+            for subcategory in subcategories:
+                if subcategory.id not in existing_sub_ids:
+                    UserWorkSubCategory.objects.create(
+                        user_work_selection=work_selection,
+                        sub_category=subcategory
+                    )
 
     def _create_driver_data(self, profile, validated_data):
         """Create driver-specific data"""
