@@ -19,6 +19,39 @@ from apps.work_categories.models import (
 from apps.verification.models import AadhaarVerification, LicenseVerification
 
 
+class FlexibleImageField(serializers.Field):
+    """
+    Custom field that accepts:
+    - File uploads (ImageField behavior)
+    - None/null values
+    - Dict objects with 'index' and 'image' keys
+    - URL strings
+    """
+    def to_internal_value(self, data):
+        # Allow None
+        if data is None or data == '':
+            return None
+
+        # Allow dict objects (for indexed operations)
+        if isinstance(data, dict):
+            return data
+
+        # Allow file uploads
+        if hasattr(data, 'read'):
+            return data
+
+        # Allow URL strings
+        if isinstance(data, str):
+            return data
+
+        # Unknown type - return as is and let parent serializer handle
+        return data
+
+    def to_representation(self, value):
+        # Not used for input, but required
+        return value
+
+
 def download_image_from_url(url, timeout=10):
     """
     Download image from URL and return ContentFile
@@ -161,8 +194,9 @@ class ProfileSetupSerializer(serializers.Serializer):
 
     # Portfolio Images (Required for all providers, max 3)
     # Supports both files and URLs (handled in to_internal_value)
+    # Uses custom FlexibleImageField to accept files, URLs, dicts, and null values
     portfolio_images = serializers.ListField(
-        child=serializers.ImageField(allow_null=True),
+        child=FlexibleImageField(),
         required=False,
         allow_empty=True,
         max_length=3
