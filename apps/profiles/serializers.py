@@ -546,15 +546,29 @@ class ProfileSetupSerializer(serializers.Serializer):
                                         'portfolio_images': 'Failed to download image from provided URL'
                                     })
 
+                    # Set the processed images back into data so DRF can validate them
                     data['portfolio_images'] = processed_images
+                    print(f"DEBUG: Set data['portfolio_images'] to {len(processed_images)} items")
             except Exception as e:
                 print(f"ERROR processing portfolio_images: {str(e)}")
                 import traceback
                 traceback.print_exc()
                 raise
+        elif 'portfolio_images' in data:
+            # Standard portfolio images (not from multipart parser)
+            # Let DRF handle it normally with getlist
+            pass
 
         # Call parent to_internal_value
         result = super().to_internal_value(data)
+
+        # If we had parsed arrays, manually set them in the result
+        # This ensures they're not lost or corrupted by DRF's processing
+        if hasattr(data, '_parsed_arrays'):
+            if 'portfolio_images' in data._parsed_arrays:
+                # Override the result with our pre-processed images
+                result['portfolio_images'] = data['portfolio_images']
+                print(f"DEBUG: Overriding result['portfolio_images'] with {len(data['portfolio_images'])} pre-processed items")
 
         # Preserve custom flags
         if '_keep_profile_photo' in data:
