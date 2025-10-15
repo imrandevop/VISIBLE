@@ -310,8 +310,13 @@ class ProfileSetupSerializer(serializers.Serializer):
                 keep_indices = []
 
                 for index, img_value in enumerate(portfolio_images_data):
+                    # Check if it's None/null (means delete or keep existing)
+                    if img_value is None or img_value == '':
+                        # Null value - mark as placeholder to keep existing or delete
+                        keep_indices.append(index)
+                        processed_images.append(None)
                     # Check if it's a file object
-                    if hasattr(img_value, 'read'):
+                    elif hasattr(img_value, 'read'):
                         # It's a file, check if same as any existing file
                         file_matches_existing = False
 
@@ -351,6 +356,9 @@ class ProfileSetupSerializer(serializers.Serializer):
                                 raise serializers.ValidationError({
                                     'portfolio_images': f'Failed to download image from URL at index {index}'
                                 })
+                    else:
+                        # Unknown type, keep as None
+                        processed_images.append(None)
 
                 data['portfolio_images'] = processed_images
                 data['_keep_portfolio_indices'] = keep_indices
@@ -670,16 +678,13 @@ class ProfileSetupSerializer(serializers.Serializer):
             if portfolio_images:
                 # Get existing portfolio images
                 existing_imgs = []
-                max_order = 0
                 if existing_profile:
                     existing_imgs = list(existing_profile.service_portfolio_images.all().order_by('image_order'))
-                    if existing_imgs:
-                        max_order = max(img.image_order for img in existing_imgs)
-                
-                # Check if we have image indices specified
+
+                # Check if we have image indices specified (dict format)
                 has_indices = False
                 image_indices = {}
-                
+
                 # Process portfolio images with indices
                 for i, img_data in enumerate(portfolio_images):
                     if isinstance(img_data, dict) and 'index' in img_data:
@@ -687,13 +692,13 @@ class ProfileSetupSerializer(serializers.Serializer):
                         index = img_data.get('index')
                         image = img_data.get('image')
                         image_indices[index] = image
-                
+
                 if has_indices:
-                    # Handle indexed images (replace, add, or delete)
+                    # MODE 1: Handle indexed images (dict format with explicit indices)
                     for index, image in image_indices.items():
                         # Find if there's an existing image at this index
                         existing_at_index = next((img for img in existing_imgs if img.image_order == index), None)
-                        
+
                         if image is None and existing_at_index:
                             # Delete image at this index
                             existing_at_index.delete()
@@ -709,16 +714,35 @@ class ProfileSetupSerializer(serializers.Serializer):
                                 image_order=index
                             )
                 else:
-                    # No indices specified, add new images without replacing existing ones
-                    next_order = max_order + 1
-                    for image in portfolio_images:
-                        if image is not None:
-                            ServicePortfolioImage.objects.create(
-                                user_profile=profile,
-                                image=image,
-                                image_order=next_order
-                            )
-                            next_order += 1
+                    # MODE 2: Handle positional replacement (simple array)
+                    # When Flutter sends [new_image, null, existing_image], we replace by position
+                    for position, new_image in enumerate(portfolio_images):
+                        if position < len(existing_imgs):
+                            # Position exists in existing images
+                            existing_img = existing_imgs[position]
+
+                            if new_image is None:
+                                # Null at this position - delete the existing image
+                                existing_img.delete()
+                            else:
+                                # Replace existing image at this position
+                                existing_img.image = new_image
+                                existing_img.save()
+                        else:
+                            # Position doesn't exist yet - add new image
+                            if new_image is not None:
+                                # Calculate next order based on existing images
+                                if existing_imgs:
+                                    max_order = max(img.image_order for img in existing_imgs)
+                                    next_order = max_order + 1
+                                else:
+                                    next_order = 0
+
+                                ServicePortfolioImage.objects.create(
+                                    user_profile=profile,
+                                    image=new_image,
+                                    image_order=next_order
+                                )
 
         # Handle verification data
         self._handle_verification_data(profile, validated_data, service_type)
