@@ -52,6 +52,36 @@ class FlexibleImageField(serializers.Field):
         return value
 
 
+class FlexibleStringField(serializers.Field):
+    """
+    Custom field that accepts:
+    - String values
+    - None/null values
+    - Dict objects with 'index' and value keys (for indexed operations)
+
+    Used for languages and sub_category_ids to support add/replace/delete operations
+    """
+    def to_internal_value(self, data):
+        # Allow None
+        if data is None or data == '':
+            return None
+
+        # Allow dict objects (for indexed operations like {"index": 0, "language": "English"})
+        if isinstance(data, dict):
+            return data
+
+        # Allow string values
+        if isinstance(data, str):
+            return data
+
+        # Unknown type - return as is and let parent serializer handle
+        return data
+
+    def to_representation(self, value):
+        # Not used for input, but required
+        return value
+
+
 def download_image_from_url(url, timeout=10):
     """
     Download image from URL and return ContentFile
@@ -165,6 +195,79 @@ def files_are_same(file1, file2):
     return hash1 == hash2 if hash1 and hash2 else False
 
 
+def parse_multipart_array_fields(data):
+    """
+    Convert Flutter's multipart form data format to nested structures.
+
+    Flutter sends:
+        portfolio_images[0][index] = 1
+        portfolio_images[0][image] = null
+        portfolio_images[1] = file
+        languages[0] = "English"
+        sub_category_ids[0][index] = 1
+        sub_category_ids[0][sub_category_id] = "SS0001"
+
+    Converts to:
+        portfolio_images = [{"index": 1, "image": null}, file]
+        languages = ["English"]
+        sub_category_ids = [{"index": 1, "sub_category_id": "SS0001"}]
+    """
+    result = {}
+
+    # Track which fields need processing
+    array_fields = {}  # {field_name: {index: {key: value}}}
+
+    # Iterate through all keys in the data
+    all_keys = list(data.keys())
+
+    for key in all_keys:
+        # Check if it matches array pattern: field[index] or field[index][key]
+        if '[' in key and ']' in key:
+            # Parse the key structure
+            parts = key.replace('[', '|').replace(']', '').split('|')
+
+            if len(parts) == 2:
+                # Simple array: field[0] = value
+                field_name, index_str = parts
+                try:
+                    index = int(index_str)
+                    if field_name not in array_fields:
+                        array_fields[field_name] = {}
+                    array_fields[field_name][index] = data.get(key)
+                except ValueError:
+                    continue
+
+            elif len(parts) == 3:
+                # Nested dict: field[0][key] = value
+                field_name, index_str, dict_key = parts
+                try:
+                    index = int(index_str)
+                    if field_name not in array_fields:
+                        array_fields[field_name] = {}
+                    if index not in array_fields[field_name]:
+                        array_fields[field_name][index] = {}
+
+                    # Handle special cases for image/file fields
+                    value = data.get(key)
+                    if value == '' or value == 'null':
+                        value = None
+
+                    # Store as dict if it's not already
+                    if not isinstance(array_fields[field_name][index], dict):
+                        array_fields[field_name][index] = {}
+
+                    array_fields[field_name][index][dict_key] = value
+                except ValueError:
+                    continue
+
+    # Convert indexed dicts to sorted lists
+    for field_name, indexed_values in array_fields.items():
+        sorted_indices = sorted(indexed_values.keys())
+        result[field_name] = [indexed_values[i] for i in sorted_indices]
+
+    return result
+
+
 class ProfileSetupSerializer(serializers.Serializer):
     """
     Comprehensive serializer for complete profile setup
@@ -185,11 +288,13 @@ class ProfileSetupSerializer(serializers.Serializer):
     gender = serializers.ChoiceField(choices=['male', 'female'], required=False, allow_null=True)
     # Supports both file and URL (handled in to_internal_value)
     profile_photo = serializers.ImageField(required=False, allow_null=True)
+    # Languages - supports add/replace/delete operations with indices
+    # Format: ["English", "Hindi"] for adding, or [{"index": 0, "language": "Spanish"}] for replace/delete
     languages = serializers.ListField(
-        child=serializers.CharField(),
+        child=FlexibleStringField(),
         required=False,
         allow_empty=True,
-        help_text="Array of languages spoken"
+        help_text="Array of languages spoken, supports indexed operations"
     )
 
     # Portfolio Images (Required for all providers, max 3)
@@ -204,8 +309,10 @@ class ProfileSetupSerializer(serializers.Serializer):
 
     # Worker-specific Fields
     main_category_id = serializers.CharField(required=False, allow_null=True)
+    # Sub-category IDs - supports add/replace/delete operations with indices
+    # Format: ["SS0001", "SS0002"] for adding, or [{"index": 0, "sub_category_id": "SS0003"}] for replace/delete
     sub_category_ids = serializers.ListField(
-        child=serializers.CharField(),
+        child=FlexibleStringField(),
         required=False,
         allow_empty=True
     )
@@ -265,11 +372,21 @@ class ProfileSetupSerializer(serializers.Serializer):
         """
         Override to handle both file and URL for images
         Convert URLs to files if needed, or keep existing images
+        Also handles Flutter's multipart form data format
         """
         try:
             # Make a mutable copy of data
             if hasattr(data, '_mutable'):
                 data._mutable = True
+
+            # Parse multipart array fields from Flutter (portfolio_images[0][index], languages[0], etc.)
+            parsed_arrays = parse_multipart_array_fields(data)
+
+            # Merge parsed arrays back into data
+            for field_name, field_value in parsed_arrays.items():
+                if field_name in ['portfolio_images', 'languages', 'sub_category_ids']:
+                    data[field_name] = field_value
+                    print(f"DEBUG: Parsed {field_name} from multipart: {field_value}")
 
             user = self.context['request'].user
 
@@ -551,19 +668,36 @@ class ProfileSetupSerializer(serializers.Serializer):
             # Validate subcategories (only if provided)
             sub_category_ids = attrs.get('sub_category_ids', [])
             if sub_category_ids:
-                valid_subcategories = WorkSubCategory.objects.filter(
-                    category=main_category,
-                    subcategory_code__in=sub_category_ids,
-                    is_active=True
-                )
-                found_codes = [sub.subcategory_code for sub in valid_subcategories]
-                invalid_codes = [code for code in sub_category_ids if code not in found_codes]
+                # Extract sub_category_id strings from the list (handling both dicts and strings)
+                codes_to_validate = []
+                for item in sub_category_ids:
+                    if isinstance(item, dict):
+                        # Dict format: {"index": 0, "sub_category_id": "SS0001"}
+                        sub_id = item.get('sub_category_id')
+                        if sub_id and sub_id != '':
+                            codes_to_validate.append(sub_id)
+                    elif isinstance(item, str):
+                        # Simple string format: "SS0001"
+                        codes_to_validate.append(item)
 
-                if invalid_codes:
-                    raise serializers.ValidationError({
-                        'sub_category_ids': f'Invalid subcategories: {", ".join(invalid_codes)}'
-                    })
-                attrs['_subcategories'] = valid_subcategories
+                # Validate the extracted codes
+                if codes_to_validate:
+                    valid_subcategories = WorkSubCategory.objects.filter(
+                        category=main_category,
+                        subcategory_code__in=codes_to_validate,
+                        is_active=True
+                    )
+                    found_codes = [sub.subcategory_code for sub in valid_subcategories]
+                    invalid_codes = [code for code in codes_to_validate if code not in found_codes]
+
+                    if invalid_codes:
+                        raise serializers.ValidationError({
+                            'sub_category_ids': f'Invalid subcategories: {", ".join(invalid_codes)}'
+                        })
+
+                    # Store validated subcategories with their codes for later use
+                    attrs['_subcategories'] = sub_category_ids  # Keep original format (may include dicts)
+                    attrs['_validated_subcategory_objects'] = {sub.subcategory_code: sub for sub in valid_subcategories}
 
     def _validate_worker_fields(self, attrs, is_required=True):
         """Validate worker-specific required fields"""
@@ -676,18 +810,50 @@ class ProfileSetupSerializer(serializers.Serializer):
         defaults['user_type'] = user_type
         defaults['service_type'] = service_type
 
-        # Languages
+        # Languages - handle indexed operations (add/replace/delete)
         if 'languages' in validated_data:
-            new_languages = validated_data.get('languages', [])
+            languages_data = validated_data.get('languages', [])
+
+            # Get existing languages as a list
+            existing_languages = []
             if existing_profile and existing_profile.languages:
-                # Get existing languages as a set
-                existing_languages = set(existing_profile.languages.split(','))
-                # Add new languages to the set (automatically handles duplicates)
-                existing_languages.update(new_languages)
-                # Convert back to comma-separated string
-                defaults['languages'] = ','.join(existing_languages)
-            else:
-                defaults['languages'] = ','.join(new_languages)
+                existing_languages = [lang.strip() for lang in existing_profile.languages.split(',') if lang.strip()]
+
+            # Separate operations: replace/delete (with index) vs add (without index)
+            replace_delete_operations = []
+            add_languages = []
+
+            for lang_data in languages_data:
+                if isinstance(lang_data, dict) and 'index' in lang_data:
+                    # Operation with index: replace or delete
+                    replace_delete_operations.append(lang_data)
+                elif lang_data and not isinstance(lang_data, dict):
+                    # Simple string without index: add new language
+                    add_languages.append(lang_data)
+
+            # Step 1: Process replace/delete operations (with indices)
+            for operation in replace_delete_operations:
+                index = operation.get('index')
+                new_language = operation.get('language')
+
+                if 0 <= index < len(existing_languages):
+                    if new_language is None or new_language == '':
+                        # Delete operation: remove language at this index
+                        existing_languages.pop(index)
+                    else:
+                        # Replace operation: update language at this index
+                        existing_languages[index] = new_language
+                elif new_language and new_language != '':
+                    # Index doesn't exist, add new language (append)
+                    existing_languages.append(new_language)
+
+            # Step 2: Add new languages (without indices, avoiding duplicates)
+            for new_language in add_languages:
+                if new_language not in existing_languages:
+                    existing_languages.append(new_language)
+
+            # Convert back to comma-separated string
+            defaults['languages'] = ','.join(existing_languages) if existing_languages else ''
         elif existing_profile:
             defaults['languages'] = existing_profile.languages
 
@@ -817,22 +983,34 @@ class ProfileSetupSerializer(serializers.Serializer):
             }
         )
 
+        # Get the validated subcategory objects mapping
+        validated_subcategory_objects = validated_data.get('_validated_subcategory_objects', {})
+
         # Check if we have subcategory indices for targeted updates
         has_indices = False
         subcategory_indices = {}
-        
+
         # Process subcategories with indices if they're in dict format
         for sub_data in subcategories:
             if isinstance(sub_data, dict) and 'index' in sub_data:
                 has_indices = True
                 index = sub_data.get('index')
-                subcategory = sub_data.get('subcategory')
+                sub_category_id = sub_data.get('sub_category_id')
+
+                # Get the subcategory object from validated objects
+                if sub_category_id and sub_category_id in validated_subcategory_objects:
+                    subcategory = validated_subcategory_objects[sub_category_id]
+                elif sub_category_id is None or sub_category_id == '':
+                    subcategory = None
+                else:
+                    continue  # Invalid subcategory, skip
+
                 subcategory_indices[index] = subcategory
-        
+
         if has_indices:
             # Handle indexed subcategories (replace, add, or delete)
             existing_subs = list(UserWorkSubCategory.objects.filter(user_work_selection=work_selection).order_by('id'))
-            
+
             for index, subcategory in subcategory_indices.items():
                 if index < len(existing_subs):
                     # Index exists
@@ -854,14 +1032,18 @@ class ProfileSetupSerializer(serializers.Serializer):
             existing_sub_ids = set(UserWorkSubCategory.objects.filter(
                 user_work_selection=work_selection
             ).values_list('sub_category_id', flat=True))
-            
-            # Only add subcategories that don't already exist
-            for subcategory in subcategories:
-                if subcategory.id not in existing_sub_ids:
-                    UserWorkSubCategory.objects.create(
-                        user_work_selection=work_selection,
-                        sub_category=subcategory
-                    )
+
+            # Process simple string subcategories (add new ones only)
+            for sub_data in subcategories:
+                if isinstance(sub_data, str):
+                    # Get the subcategory object from validated objects
+                    if sub_data in validated_subcategory_objects:
+                        subcategory = validated_subcategory_objects[sub_data]
+                        if subcategory.id not in existing_sub_ids:
+                            UserWorkSubCategory.objects.create(
+                                user_work_selection=work_selection,
+                                sub_category=subcategory
+                            )
 
     def _create_driver_data(self, profile, validated_data):
         """Create driver-specific data"""
