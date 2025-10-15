@@ -13,7 +13,7 @@ urlpatterns = [
     path('', RedirectView.as_view(url='/admin/', permanent=True)),
     
     # API endpoints
-    path('api/1/', include('apps.authentication.urls')),
+    path('api/1/authentication/', include('apps.authentication.urls')),
     path('api/1/profiles/', include('apps.profiles.urls')),
     path('api/1/work-categories/', include('apps.work_categories.urls')),
     path('api/1/location/', include('apps.location_services.urls')),
