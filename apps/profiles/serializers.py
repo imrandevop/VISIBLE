@@ -394,6 +394,7 @@ class ProfileSetupSerializer(serializers.Serializer):
                 if field_name in ['portfolio_images', 'languages', 'sub_category_ids']:
                     data[field_name] = field_value
                     print(f"DEBUG: Parsed {field_name} from multipart: {field_value}")
+                    print(f"DEBUG: {field_name} types: {[type(item).__name__ for item in field_value]}")
 
             user = self.context['request'].user
 
@@ -455,7 +456,13 @@ class ProfileSetupSerializer(serializers.Serializer):
         # Handle portfolio_images (can be files, URLs, or dict operations)
         if 'portfolio_images' in data:
             try:
-                portfolio_images_data = data.getlist('portfolio_images') if hasattr(data, 'getlist') else data.get('portfolio_images', [])
+                # If we already parsed multipart arrays, data['portfolio_images'] will be a list
+                # Don't use getlist() in that case, as it will wrap our list in another list
+                portfolio_images_data = data.get('portfolio_images', [])
+
+                # Ensure it's a list
+                if not isinstance(portfolio_images_data, list):
+                    portfolio_images_data = [portfolio_images_data] if portfolio_images_data else []
 
                 print(f"DEBUG: Processing {len(portfolio_images_data)} portfolio images")
                 for idx, img in enumerate(portfolio_images_data):
@@ -476,7 +483,10 @@ class ProfileSetupSerializer(serializers.Serializer):
                     for img_value in portfolio_images_data:
                         # Case 1: Dict with 'index' key (replace/delete operation)
                         if isinstance(img_value, dict) and 'index' in img_value:
+                            # Convert index to int if it's a string
                             index = img_value.get('index')
+                            if isinstance(index, str):
+                                index = int(index)
                             image_data = img_value.get('image')
 
                             # Process the image field within the dict
