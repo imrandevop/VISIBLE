@@ -85,6 +85,13 @@ def profile_setup_api(request, version=None):
         print(f"Request data keys: {list(request.data.keys())}")
         print(f"User: {request.user.mobile_number}")
 
+        # Debug portfolio_images specifically
+        if 'portfolio_images' in request.data:
+            portfolio_imgs = request.data.getlist('portfolio_images') if hasattr(request.data, 'getlist') else request.data.get('portfolio_images', [])
+            print(f"Portfolio images count: {len(portfolio_imgs)}")
+            for idx, img in enumerate(portfolio_imgs):
+                print(f"  Image {idx}: type={type(img)}, value={img if not hasattr(img, 'read') else 'FILE_OBJECT'}")
+
         # Validate and process data
         serializer = ProfileSetupSerializer(data=request.data, context={'request': request})
         

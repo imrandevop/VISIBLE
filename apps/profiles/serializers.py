@@ -330,83 +330,95 @@ class ProfileSetupSerializer(serializers.Serializer):
 
         # Handle portfolio_images (can be files, URLs, or dict operations)
         if 'portfolio_images' in data:
-            portfolio_images_data = data.getlist('portfolio_images') if hasattr(data, 'getlist') else data.get('portfolio_images', [])
+            try:
+                portfolio_images_data = data.getlist('portfolio_images') if hasattr(data, 'getlist') else data.get('portfolio_images', [])
 
-            if portfolio_images_data:
-                existing_portfolio_urls = get_existing_portfolio_urls(existing_profile)
-                existing_portfolio_objs = []
+                print(f"DEBUG: Processing {len(portfolio_images_data)} portfolio images")
+                for idx, img in enumerate(portfolio_images_data):
+                    print(f"DEBUG: Image {idx} - Type: {type(img)}, IsDict: {isinstance(img, dict)}, HasRead: {hasattr(img, 'read')}")
+                    if isinstance(img, dict):
+                        print(f"DEBUG: Dict keys: {img.keys()}, index={img.get('index')}, image type={type(img.get('image'))}")
 
-                # Get existing portfolio file objects for comparison
-                if existing_profile:
-                    existing_portfolio_objs = list(existing_profile.service_portfolio_images.all().order_by('image_order'))
+                if portfolio_images_data:
+                    existing_portfolio_urls = get_existing_portfolio_urls(existing_profile)
+                    existing_portfolio_objs = []
 
-                processed_images = []
+                    # Get existing portfolio file objects for comparison
+                    if existing_profile:
+                        existing_portfolio_objs = list(existing_profile.service_portfolio_images.all().order_by('image_order'))
 
-                for img_value in portfolio_images_data:
-                    # Case 1: Dict with 'index' key (replace/delete operation)
-                    if isinstance(img_value, dict) and 'index' in img_value:
-                        index = img_value.get('index')
-                        image_data = img_value.get('image')
+                    processed_images = []
 
-                        # Process the image field within the dict
-                        if image_data is None or image_data == '':
-                            # Delete operation
-                            processed_images.append({'index': index, 'image': None})
-                        elif hasattr(image_data, 'read'):
-                            # File object - replace operation
-                            processed_images.append({'index': index, 'image': image_data})
-                        elif is_url_string(image_data):
-                            # URL string - download and replace
-                            downloaded_file = download_image_from_url(image_data)
-                            if downloaded_file:
-                                processed_images.append({'index': index, 'image': downloaded_file})
+                    for img_value in portfolio_images_data:
+                        # Case 1: Dict with 'index' key (replace/delete operation)
+                        if isinstance(img_value, dict) and 'index' in img_value:
+                            index = img_value.get('index')
+                            image_data = img_value.get('image')
+
+                            # Process the image field within the dict
+                            if image_data is None or image_data == '':
+                                # Delete operation
+                                processed_images.append({'index': index, 'image': None})
+                            elif hasattr(image_data, 'read'):
+                                # File object - replace operation
+                                processed_images.append({'index': index, 'image': image_data})
+                            elif is_url_string(image_data):
+                                # URL string - download and replace
+                                downloaded_file = download_image_from_url(image_data)
+                                if downloaded_file:
+                                    processed_images.append({'index': index, 'image': downloaded_file})
+                                else:
+                                    raise serializers.ValidationError({
+                                        'portfolio_images': f'Failed to download image from URL for index {index}'
+                                    })
                             else:
-                                raise serializers.ValidationError({
-                                    'portfolio_images': f'Failed to download image from URL for index {index}'
-                                })
-                        else:
-                            # Unknown image type in dict
-                            processed_images.append({'index': index, 'image': None})
+                                # Unknown image type in dict
+                                processed_images.append({'index': index, 'image': None})
 
-                    # Case 2: None/null value (ignore - not valid for add operation)
-                    elif img_value is None or img_value == '':
-                        # Skip null values that aren't in dict format
-                        continue
+                        # Case 2: None/null value (ignore - not valid for add operation)
+                        elif img_value is None or img_value == '':
+                            # Skip null values that aren't in dict format
+                            continue
 
-                    # Case 3: File object (add operation)
-                    elif hasattr(img_value, 'read'):
-                        # Check if file matches existing (avoid duplicate uploads)
-                        file_matches_existing = False
-                        for existing_img_obj in existing_portfolio_objs:
-                            try:
-                                if files_are_same(img_value, existing_img_obj.image):
-                                    # File is identical to existing, skip it
-                                    file_matches_existing = True
-                                    break
-                            except Exception as e:
-                                print(f"Error comparing portfolio image: {str(e)}")
-                                continue
+                        # Case 3: File object (add operation)
+                        elif hasattr(img_value, 'read'):
+                            # Check if file matches existing (avoid duplicate uploads)
+                            file_matches_existing = False
+                            for existing_img_obj in existing_portfolio_objs:
+                                try:
+                                    if files_are_same(img_value, existing_img_obj.image):
+                                        # File is identical to existing, skip it
+                                        file_matches_existing = True
+                                        break
+                                except Exception as e:
+                                    print(f"Error comparing portfolio image: {str(e)}")
+                                    continue
 
-                        if not file_matches_existing:
-                            # New file - add it
-                            processed_images.append(img_value)
+                            if not file_matches_existing:
+                                # New file - add it
+                                processed_images.append(img_value)
 
-                    # Case 4: URL string (add operation)
-                    elif is_url_string(img_value):
-                        # Check if URL matches existing
-                        url_matches_existing = any(img_value.endswith(existing_url) for existing_url in existing_portfolio_urls)
+                        # Case 4: URL string (add operation)
+                        elif is_url_string(img_value):
+                            # Check if URL matches existing
+                            url_matches_existing = any(img_value.endswith(existing_url) for existing_url in existing_portfolio_urls)
 
-                        if not url_matches_existing:
-                            # URL doesn't match, download and add it
-                            downloaded_file = download_image_from_url(img_value)
-                            if downloaded_file:
-                                processed_images.append(downloaded_file)
-                            else:
-                                raise serializers.ValidationError({
-                                    'portfolio_images': 'Failed to download image from provided URL'
-                                })
+                            if not url_matches_existing:
+                                # URL doesn't match, download and add it
+                                downloaded_file = download_image_from_url(img_value)
+                                if downloaded_file:
+                                    processed_images.append(downloaded_file)
+                                else:
+                                    raise serializers.ValidationError({
+                                        'portfolio_images': 'Failed to download image from provided URL'
+                                    })
 
-                data['portfolio_images'] = processed_images
+                    data['portfolio_images'] = processed_images
+            except Exception as e:
+                print(f"ERROR processing portfolio_images: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                raise
 
         # Call parent to_internal_value
         result = super().to_internal_value(data)
