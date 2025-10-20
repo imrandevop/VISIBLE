@@ -131,6 +131,10 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                 # Provider typing status
                 await self.handle_typing_indicator(data)
 
+            elif message_type == 'request_chat_history':
+                # Provider requesting chat history
+                await self.handle_request_chat_history(data)
+
             elif message_type == 'cancel_connection':
                 # Provider cancelling connection
                 await self.handle_cancel_connection(data)
@@ -435,6 +439,50 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
 
         except Exception as e:
             logger.error(f"Error handling typing indicator: {e}")
+
+    async def handle_request_chat_history(self, data):
+        """Handle provider requesting chat history"""
+        try:
+            session_id = data.get('session_id')
+
+            # Load chat history for this provider
+            chat_history = await self.get_chat_history_for_provider(self.provider_id)
+
+            if chat_history:
+                # If session_id was provided, verify it matches
+                if session_id and chat_history['session_id'] != session_id:
+                    await self.send(text_data=json.dumps({
+                        'type': 'error',
+                        'error': 'Session ID does not match active session'
+                    }))
+                    return
+
+                # Send chat history
+                await self.send(text_data=json.dumps({
+                    'type': 'chat_history_loaded',
+                    'session_id': chat_history['session_id'],
+                    'messages': chat_history['messages'],
+                    'message_count': len(chat_history['messages']),
+                    'timestamp': timezone.now().isoformat()
+                }))
+                logger.info(f"📜 Loaded {len(chat_history['messages'])} messages for provider {self.user.mobile_number}")
+            else:
+                # No active session or no messages
+                await self.send(text_data=json.dumps({
+                    'type': 'chat_history_loaded',
+                    'session_id': session_id,
+                    'messages': [],
+                    'message_count': 0,
+                    'timestamp': timezone.now().isoformat()
+                }))
+                logger.info(f"📜 No chat history found for provider {self.user.mobile_number}")
+
+        except Exception as e:
+            logger.error(f"Error handling request chat history: {e}")
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error': 'Failed to load chat history'
+            }))
 
     async def handle_cancel_connection(self, data):
         """Handle provider cancelling connection"""
@@ -1568,6 +1616,10 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
             elif message_type == 'typing_indicator':
                 await self.handle_typing_indicator(data)
 
+            elif message_type == 'request_chat_history':
+                # Seeker requesting chat history
+                await self.handle_request_chat_history(data)
+
             elif message_type == 'cancel_connection':
                 await self.handle_cancel_connection(data)
 
@@ -1756,6 +1808,50 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
 
         except Exception as e:
             logger.error(f"Error handling typing indicator: {e}")
+
+    async def handle_request_chat_history(self, data):
+        """Handle seeker requesting chat history"""
+        try:
+            session_id = data.get('session_id')
+
+            # Load chat history for this seeker
+            chat_history = await self.get_chat_history_for_seeker(self.seeker_id)
+
+            if chat_history:
+                # If session_id was provided, verify it matches
+                if session_id and chat_history['session_id'] != session_id:
+                    await self.send(text_data=json.dumps({
+                        'type': 'error',
+                        'error': 'Session ID does not match active session'
+                    }))
+                    return
+
+                # Send chat history
+                await self.send(text_data=json.dumps({
+                    'type': 'chat_history_loaded',
+                    'session_id': chat_history['session_id'],
+                    'messages': chat_history['messages'],
+                    'message_count': len(chat_history['messages']),
+                    'timestamp': timezone.now().isoformat()
+                }))
+                logger.info(f"📜 Loaded {len(chat_history['messages'])} messages for seeker {self.user.mobile_number}")
+            else:
+                # No active session or no messages
+                await self.send(text_data=json.dumps({
+                    'type': 'chat_history_loaded',
+                    'session_id': session_id,
+                    'messages': [],
+                    'message_count': 0,
+                    'timestamp': timezone.now().isoformat()
+                }))
+                logger.info(f"📜 No chat history found for seeker {self.user.mobile_number}")
+
+        except Exception as e:
+            logger.error(f"Error handling request chat history: {e}")
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'error': 'Failed to load chat history'
+            }))
 
     async def handle_cancel_connection(self, data):
         """Handle seeker cancelling connection"""
