@@ -40,6 +40,12 @@ class CommunicationSettings(BaseModel):
     facebook_enabled = models.BooleanField(default=False)
     facebook_value = models.URLField(blank=True, null=True, help_text="Facebook profile link")
 
+    # Land mark
+    land_mark = models.CharField(max_length=255, blank=True, null=True, help_text="Physical landmark or address")
+
+    # UPI ID
+    upi_ID = models.CharField(max_length=100, blank=True, null=True, help_text="UPI payment ID")
+
     def __str__(self):
         return f"{self.user_profile.full_name} - Communication Settings"
 

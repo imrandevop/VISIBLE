@@ -47,7 +47,9 @@ def communication_settings_api(request, version=None):
             "facebook": {
                 "enabled": true,
                 "value": ""
-            }
+            },
+            "land_mark": "Near Central Park, 5th Avenue",  // Optional, max 255 chars
+            "upi_ID": "user@paytm"  // Optional, max 100 chars
         }
     }
 
@@ -126,7 +128,9 @@ def handle_get_communication_settings(user_profile):
                 "facebook": {
                     "enabled": communication_settings.facebook_enabled,
                     "value": communication_settings.facebook_value or ""
-                }
+                },
+                "land_mark": communication_settings.land_mark or "",
+                "upi_ID": communication_settings.upi_ID or ""
             }
 
         except CommunicationSettings.DoesNotExist:
@@ -138,7 +142,9 @@ def handle_get_communication_settings(user_profile):
                 "map_location": {"enabled": False, "value": ""},
                 "website": {"enabled": False, "value": ""},
                 "instagram": {"enabled": False, "value": ""},
-                "facebook": {"enabled": False, "value": ""}
+                "facebook": {"enabled": False, "value": ""},
+                "land_mark": "",
+                "upi_ID": ""
             }
 
         return Response({
@@ -205,6 +211,10 @@ def handle_set_communication_settings(request, user_profile):
                     # Facebook
                     'facebook_enabled': communication_data.get('facebook', {}).get('enabled', False),
                     'facebook_value': communication_data.get('facebook', {}).get('value', ''),
+
+                    # Land mark and UPI ID
+                    'land_mark': communication_data.get('land_mark', ''),
+                    'upi_ID': communication_data.get('upi_ID', ''),
                 }
             )
 
@@ -245,6 +255,10 @@ def handle_set_communication_settings(request, user_profile):
                 communication_settings.facebook_enabled = facebook_data.get('enabled', False)
                 communication_settings.facebook_value = facebook_data.get('value', '')
 
+                # Land mark and UPI ID
+                communication_settings.land_mark = communication_data.get('land_mark', '')
+                communication_settings.upi_ID = communication_data.get('upi_ID', '')
+
                 communication_settings.save()
 
         # Prepare response data
@@ -276,7 +290,9 @@ def handle_set_communication_settings(request, user_profile):
             "facebook": {
                 "enabled": communication_settings.facebook_enabled,
                 "value": communication_settings.facebook_value or ""
-            }
+            },
+            "land_mark": communication_settings.land_mark or "",
+            "upi_ID": communication_settings.upi_ID or ""
         }
 
         return Response({

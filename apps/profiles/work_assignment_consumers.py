@@ -283,12 +283,12 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                 }))
                 return
 
-            # Validate mediums - now supports all 7 medium types
-            valid_types = {'telegram', 'whatsapp', 'call', 'map_location', 'website', 'instagram', 'facebook'}
+            # Validate mediums - now supports all 9 fields (7 medium types + land_mark + upi_ID)
+            valid_types = {'telegram', 'whatsapp', 'call', 'map_location', 'website', 'instagram', 'facebook', 'land_mark', 'upi_ID'}
             if not all(k in valid_types for k in mediums.keys()):
                 await self.send(text_data=json.dumps({
                     'type': 'error',
-                    'error': 'Invalid medium types. Allowed: telegram, whatsapp, call, map_location, website, instagram, facebook'
+                    'error': 'Invalid medium types. Allowed: telegram, whatsapp, call, map_location, website, instagram, facebook, land_mark, upi_ID'
                 }))
                 return
 
@@ -726,6 +726,10 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                         "enabled": True,
                         "value": communication_settings.facebook_value or ""
                     }
+
+                # Add land_mark and upi_ID to all medium responses
+                mediums['land_mark'] = communication_settings.land_mark or ""
+                mediums['upi_ID'] = communication_settings.upi_ID or ""
 
                 return mediums
 
@@ -1616,12 +1620,12 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
                 }))
                 return
 
-            # Validate mediums - now supports all 7 medium types
-            valid_types = {'telegram', 'whatsapp', 'call', 'map_location', 'website', 'instagram', 'facebook'}
+            # Validate mediums - now supports all 9 fields (7 medium types + land_mark + upi_ID)
+            valid_types = {'telegram', 'whatsapp', 'call', 'map_location', 'website', 'instagram', 'facebook', 'land_mark', 'upi_ID'}
             if not all(k in valid_types for k in mediums.keys()):
                 await self.send(text_data=json.dumps({
                     'type': 'error',
-                    'error': 'Invalid mediums. Allowed: telegram, whatsapp, call, map_location, website, instagram, facebook'
+                    'error': 'Invalid mediums. Allowed: telegram, whatsapp, call, map_location, website, instagram, facebook, land_mark, upi_ID'
                 }))
                 return
 
@@ -2031,6 +2035,10 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
                         "enabled": True,
                         "value": communication_settings.facebook_value or ""
                     }
+
+                # Add land_mark and upi_ID to all medium responses
+                mediums['land_mark'] = communication_settings.land_mark or ""
+                mediums['upi_ID'] = communication_settings.upi_ID or ""
 
                 return mediums
 
