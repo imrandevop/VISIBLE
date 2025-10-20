@@ -12,6 +12,9 @@ urlpatterns = [
     path('me/', views.get_profile_api, name='get_profile'),
     path('status/', views.check_profile_status_api, name='profile_status'),
 
+    # Role switching endpoint
+    path('switch-role/', views.switch_role_api, name='switch_role'),
+
     # Provider dashboard endpoint
     path('provider/dashboard/', views.provider_dashboard_api, name='provider_dashboard'),
 

@@ -55,6 +55,11 @@ class UserProfile(BaseModel):
     # FCM Token for push notifications
     fcm_token = models.CharField(max_length=255, blank=True, null=True, help_text="Firebase Cloud Messaging token for push notifications")
     is_active_for_work = models.BooleanField(default=False, help_text="Provider is actively available for work assignments")
+
+    # Role switching fields
+    previous_user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, null=True, blank=True, help_text="Previous user type before role switch")
+    role_switch_count = models.PositiveIntegerField(default=0, help_text="Number of times user has switched roles")
+    last_role_switch_date = models.DateTimeField(null=True, blank=True, help_text="Last time user switched roles")
     
     def __str__(self):
         return f"{self.full_name} ({self.user.mobile_number})"
@@ -459,6 +464,28 @@ class Offer(BaseModel):
         ordering = ['priority', '-created_at']
         verbose_name = "Offer"
         verbose_name_plural = "Offers"
+
+
+class RoleSwitchHistory(BaseModel):
+    """Track history of role switches for users"""
+    user_profile = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name='role_switch_history'
+    )
+    from_user_type = models.CharField(max_length=10, choices=UserProfile.USER_TYPE_CHOICES, null=True, blank=True)
+    to_user_type = models.CharField(max_length=10, choices=UserProfile.USER_TYPE_CHOICES)
+    switch_date = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField(blank=True, null=True, help_text="Optional reason for role switch")
+
+    def __str__(self):
+        from_type = self.from_user_type or "None"
+        return f"{self.user_profile.full_name}: {from_type} → {self.to_user_type} on {self.switch_date.strftime('%Y-%m-%d')}"
+
+    class Meta:
+        ordering = ['-switch_date']
+        verbose_name = "Role Switch History"
+        verbose_name_plural = "Role Switch Histories"
 
 
 # Import communication models

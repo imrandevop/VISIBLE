@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
 
-from apps.profiles.serializers import ProfileSetupSerializer, ProfileResponseSerializer, WalletSerializer
+from apps.profiles.serializers import ProfileSetupSerializer, ProfileResponseSerializer, WalletSerializer, RoleSwitchSerializer
 from apps.profiles.models import UserProfile, Wallet
 from apps.core.models import ProviderActiveStatus
 
@@ -782,6 +782,99 @@ def get_wallet_details_api(request, version=None):
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error in get_wallet_details_api: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return Response({
+            "status": "error",
+            "message": "An unexpected server error occurred. Please try again."
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def switch_role_api(request):
+    """
+    Switch user role between seeker and provider.
+
+    POST /api/1/profiles/switch-role/
+
+    Request body:
+    {
+        "new_user_type": "provider"  # or "seeker"
+    }
+
+    Response:
+    {
+        "status": "success",
+        "message": "Role switched successfully from seeker to provider",
+        "access_token": "new_jwt_token...",
+        "refresh_token": "new_refresh_token...",
+        "data": {
+            ... updated profile data ...
+        }
+    }
+
+    Error responses:
+    - 400: Validation errors (active work orders, invalid data, etc.)
+    - 404: User profile not found
+    - 500: Server error
+    """
+    try:
+        from apps.authentication.utils.jwt_utils import get_tokens_for_user
+
+        # Get user profile
+        try:
+            user_profile = request.user.profile
+        except UserProfile.DoesNotExist:
+            return Response({
+                "status": "error",
+                "message": "User profile not found. Please complete profile setup first."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Validate and process role switch
+        serializer = RoleSwitchSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+
+        if not serializer.is_valid():
+            # Extract error message
+            errors = serializer.errors
+            if 'error' in errors:
+                error_message = errors['error'][0] if isinstance(errors['error'], list) else errors['error']
+            else:
+                error_message = str(errors)
+
+            return Response({
+                "status": "error",
+                "message": error_message,
+                "errors": errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Perform role switch
+        previous_type = user_profile.user_type
+        updated_profile = serializer.save()
+        new_type = updated_profile.user_type
+
+        # Generate NEW JWT tokens with updated user_type
+        new_tokens = get_tokens_for_user(request.user)
+
+        # Get updated profile data
+        from apps.profiles.serializers import ProfileResponseSerializer
+        profile_serializer = ProfileResponseSerializer(updated_profile, context={'request': request})
+
+        return Response({
+            "status": "success",
+            "message": f"Role switched successfully from {previous_type} to {new_type}",
+            "access_token": new_tokens['access_token'],
+            "refresh_token": new_tokens['refresh_token'],
+            "data": profile_serializer.data
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in switch_role_api: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
         return Response({

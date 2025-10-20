@@ -8,14 +8,22 @@ User = get_user_model()
 def get_tokens_for_user(user):
     """
     Generate JWT tokens for a user
-    Returns access token with mobile number in payload
+    Returns access token with mobile number and profile info in payload
     """
     refresh = RefreshToken.for_user(user)
-    
+
     # Add custom claims to the token
     refresh['mobile_number'] = user.mobile_number
     refresh['is_mobile_verified'] = user.is_mobile_verified
-    
+
+    # Add user type if profile exists
+    try:
+        profile = user.profile
+        refresh['user_type'] = profile.user_type
+    except:
+        # Profile doesn't exist yet
+        refresh['user_type'] = None
+
     return {
         'access_token': str(refresh.access_token),
         'refresh_token': str(refresh),  # We'll only use access_token for now
