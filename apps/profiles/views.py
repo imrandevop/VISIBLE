@@ -546,12 +546,8 @@ def provider_dashboard_api(request, version=None):
                 "message": "Only providers can access dashboard"
             }, status=status.HTTP_403_FORBIDDEN)
 
-        # Check if profile is complete
-        if not user_profile.profile_complete:
-            return Response({
-                "status": "error",
-                "message": "Profile incomplete. Please complete your profile setup."
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # Allow access to dashboard even if profile incomplete
+        # They can see what needs to be completed via profile_complete field in response
 
         # 1. Get active status from ProviderActiveStatus (location service)
         provider_status = ProviderActiveStatus.objects.filter(user=user).first()
