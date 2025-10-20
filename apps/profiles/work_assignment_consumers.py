@@ -60,6 +60,18 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
             'timestamp': timezone.now().isoformat()
         }))
 
+        # Load and send chat history if there's an active session
+        chat_history = await self.get_chat_history_for_provider(self.provider_id)
+        if chat_history:
+            await self.send(text_data=json.dumps({
+                'type': 'chat_history_loaded',
+                'session_id': chat_history['session_id'],
+                'messages': chat_history['messages'],
+                'message_count': len(chat_history['messages']),
+                'timestamp': timezone.now().isoformat()
+            }))
+            logger.info(f"📜 Loaded {len(chat_history['messages'])} chat messages for provider {self.user.mobile_number}")
+
     async def disconnect(self, close_code):
         """Called when WebSocket connection is closed"""
         # Cancel distance update task if running
@@ -959,6 +971,48 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
             return False
 
     @database_sync_to_async
+    def get_chat_history_for_provider(self, provider_id):
+        """Get chat history for provider's most recent active session"""
+        from .work_assignment_models import WorkSession, ChatMessage
+
+        try:
+            # Get most recent active session for this provider
+            session = WorkSession.objects.filter(
+                work_order__provider_id=provider_id,
+                connection_state='active'
+            ).order_by('-created_at').first()
+
+            if not session:
+                return None
+
+            # Get all messages for this session, ordered by creation time
+            messages = ChatMessage.objects.filter(
+                session=session
+            ).order_by('created_at')
+
+            # Serialize messages
+            message_list = []
+            for msg in messages:
+                message_list.append({
+                    'message_id': str(msg.message_id),
+                    'sender_type': msg.sender_type,
+                    'message': msg.message_text,
+                    'delivery_status': msg.delivery_status,
+                    'delivered_at': msg.delivered_at.isoformat() if msg.delivered_at else None,
+                    'read_at': msg.read_at.isoformat() if msg.read_at else None,
+                    'timestamp': msg.created_at.isoformat()
+                })
+
+            return {
+                'session_id': str(session.session_id),
+                'messages': message_list
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting chat history for provider: {e}")
+            return None
+
+    @database_sync_to_async
     def update_typing_status(self, session_id, user_id, user_type, is_typing):
         """Update typing indicator status"""
         from .work_assignment_models import WorkSession, TypingIndicator
@@ -1451,6 +1505,18 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
 
         await self.accept()
         logger.info(f"✅ Seeker {self.user.mobile_number} connected to WebSocket")
+
+        # Load and send chat history if there's an active session
+        chat_history = await self.get_chat_history_for_seeker(self.seeker_id)
+        if chat_history:
+            await self.send(text_data=json.dumps({
+                'type': 'chat_history_loaded',
+                'session_id': chat_history['session_id'],
+                'messages': chat_history['messages'],
+                'message_count': len(chat_history['messages']),
+                'timestamp': timezone.now().isoformat()
+            }))
+            logger.info(f"📜 Loaded {len(chat_history['messages'])} chat messages for seeker {self.user.mobile_number}")
 
     async def disconnect(self, close_code):
         """Called when WebSocket connection is closed"""
@@ -2106,6 +2172,48 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error updating message status: {e}")
             return False
+
+    @database_sync_to_async
+    def get_chat_history_for_seeker(self, seeker_id):
+        """Get chat history for seeker's most recent active session"""
+        from .work_assignment_models import WorkSession, ChatMessage
+
+        try:
+            # Get most recent active session for this seeker
+            session = WorkSession.objects.filter(
+                work_order__seeker_id=seeker_id,
+                connection_state='active'
+            ).order_by('-created_at').first()
+
+            if not session:
+                return None
+
+            # Get all messages for this session, ordered by creation time
+            messages = ChatMessage.objects.filter(
+                session=session
+            ).order_by('created_at')
+
+            # Serialize messages
+            message_list = []
+            for msg in messages:
+                message_list.append({
+                    'message_id': str(msg.message_id),
+                    'sender_type': msg.sender_type,
+                    'message': msg.message_text,
+                    'delivery_status': msg.delivery_status,
+                    'delivered_at': msg.delivered_at.isoformat() if msg.delivered_at else None,
+                    'read_at': msg.read_at.isoformat() if msg.read_at else None,
+                    'timestamp': msg.created_at.isoformat()
+                })
+
+            return {
+                'session_id': str(session.session_id),
+                'messages': message_list
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting chat history for seeker: {e}")
+            return None
 
     @database_sync_to_async
     def update_typing_status(self, session_id, user_id, user_type, is_typing):
