@@ -72,8 +72,15 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
             }))
             logger.info(f"📜 Loaded {len(chat_history['messages'])} chat messages for provider {self.user.mobile_number}")
 
+            # Notify seeker that provider is online
+            await self.notify_user_presence(chat_history['session_id'], 'provider', 'online')
+
     async def disconnect(self, close_code):
         """Called when WebSocket connection is closed"""
+        # Notify seeker that provider is offline (if there's an active session)
+        if hasattr(self, 'current_session_id') and self.current_session_id:
+            await self.notify_user_presence(self.current_session_id, 'provider', 'offline')
+
         # Cancel distance update task if running
         if self.distance_update_task and not self.distance_update_task.done():
             self.distance_update_task.cancel()
@@ -654,6 +661,15 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
             'session_id': event['session_id'],
             'user_type': event['user_type'],
             'is_typing': event['is_typing'],
+            'timestamp': timezone.now().isoformat()
+        }))
+
+    async def user_presence_event(self, event):
+        """Notify provider about seeker online/offline status"""
+        await self.send(text_data=json.dumps({
+            'type': 'user_presence',
+            'user_type': event['user_type'],
+            'status': event['status'],
             'timestamp': timezone.now().isoformat()
         }))
 
@@ -1430,6 +1446,34 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error notifying typing status: {e}")
 
+    async def notify_user_presence(self, session_id, user_type, status):
+        """Notify other user about online/offline presence"""
+        try:
+            session_info = await self.get_session_users(session_id)
+
+            if not session_info:
+                return
+
+            # Determine recipient based on who's presence changed
+            if user_type == 'provider':
+                # Provider status changed, notify seeker
+                recipient_group = f'seeker_{session_info["seeker_id"]}'
+            else:
+                # Seeker status changed, notify provider
+                recipient_group = f'provider_{session_info["provider_id"]}'
+
+            await self.channel_layer.group_send(
+                recipient_group,
+                {
+                    'type': 'user_presence_event',
+                    'user_type': user_type,
+                    'status': status
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error notifying user presence: {e}")
+
     async def notify_connection_cancelled(self, session_id):
         """Notify seeker that provider cancelled connection"""
         try:
@@ -1570,8 +1614,15 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
             }))
             logger.info(f"📜 Loaded {len(chat_history['messages'])} chat messages for seeker {self.user.mobile_number}")
 
+            # Notify provider that seeker is online
+            await self.notify_user_presence(chat_history['session_id'], 'seeker', 'online')
+
     async def disconnect(self, close_code):
         """Called when WebSocket connection is closed"""
+        # Notify provider that seeker is offline (if there's an active session)
+        if hasattr(self, 'current_session_id') and self.current_session_id:
+            await self.notify_user_presence(self.current_session_id, 'seeker', 'offline')
+
         # Cancel distance update task if running
         if self.distance_update_task and not self.distance_update_task.done():
             self.distance_update_task.cancel()
@@ -2028,6 +2079,15 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
             'session_id': event['session_id'],
             'user_type': event['user_type'],
             'is_typing': event['is_typing'],
+            'timestamp': timezone.now().isoformat()
+        }))
+
+    async def user_presence_event(self, event):
+        """Notify seeker about provider online/offline status"""
+        await self.send(text_data=json.dumps({
+            'type': 'user_presence',
+            'user_type': event['user_type'],
+            'status': event['status'],
             'timestamp': timezone.now().isoformat()
         }))
 
@@ -2608,6 +2668,34 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
             )
         except Exception as e:
             logger.error(f"Error notifying typing status: {e}")
+
+    async def notify_user_presence(self, session_id, user_type, status):
+        """Notify other user about online/offline presence"""
+        try:
+            session_info = await self.get_session_users(session_id)
+
+            if not session_info:
+                return
+
+            # Determine recipient based on who's presence changed
+            if user_type == 'provider':
+                # Provider status changed, notify seeker
+                recipient_group = f'seeker_{session_info["seeker_id"]}'
+            else:
+                # Seeker status changed, notify provider
+                recipient_group = f'provider_{session_info["provider_id"]}'
+
+            await self.channel_layer.group_send(
+                recipient_group,
+                {
+                    'type': 'user_presence_event',
+                    'user_type': user_type,
+                    'status': status
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error notifying user presence: {e}")
 
     async def notify_connection_cancelled(self, session_id):
         """Notify provider that seeker cancelled"""
