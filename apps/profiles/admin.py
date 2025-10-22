@@ -732,6 +732,11 @@ class WalletAdmin(admin.ModelAdmin):
         return format_html('<span style="color: gray;">Never subscribed</span>')
     subscription_status_detail.short_description = 'Subscription Status'
 
+    def has_add_permission(self, request):
+        # Wallets should only be created automatically through signals
+        # Prevent manual wallet creation in admin
+        return False
+
 
 @admin.register(WalletTransaction)
 class WalletTransactionAdmin(admin.ModelAdmin):
