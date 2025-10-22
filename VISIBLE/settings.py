@@ -95,7 +95,16 @@ DATABASE_URL = config('DATABASE_URL', default=None)
 
 if DATABASE_URL:
     DATABASES = {
-        'default': dj_database_url.config(default=DATABASE_URL, conn_max_age=600)
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=60,  # Reduced from 600 to 60 seconds
+            conn_health_checks=True  # Enable connection health checks
+        )
+    }
+    # Add connection pooling options
+    DATABASES['default']['OPTIONS'] = {
+        'connect_timeout': 10,
+        'options': '-c statement_timeout=30000',  # 30 second query timeout
     }
 else:
     # Fallback to SQLite for local development
