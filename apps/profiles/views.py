@@ -686,6 +686,197 @@ def provider_dashboard_api(request, version=None):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def seeker_dashboard_api(request, version=None):
+    """
+    Get seeker dashboard data including search status, wallet, services, and previous services
+
+    GET /api/1/profiles/seeker/dashboard/
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        Success (200):
+        {
+            "status": "success",
+            "message": "seeker dashboard data fetched successfully",
+            "data": {
+                "profile_complete": true,
+                "search_status": {
+                    "is_searching": false,
+                    "last_updated": "2025-10-07T10:55:00Z"
+                },
+                "wallet": {
+                    "balance": 850.00,
+                    "currency": "INR"
+                },
+                "services": {
+                    "active_services": 2
+                },
+                "offers": [
+                    {
+                        "offer_id": "OFF001",
+                        "title": "Snapdeal Mega Sale",
+                        "description": "Get up to 70% off on all products",
+                        "image_url": "https://imagesvs.oneindia.com/img/2016/09/snapdeal-21-1474438626.jpg",
+                        "valid_until": "2025-10-31T23:59:59Z",
+                        "is_active": true,
+                        "priority": 1
+                    }
+                ],
+                "previous_services": [...],
+                "maintenance_mode": false
+            }
+        }
+
+        Error (403):
+        {
+            "status": "error",
+            "message": "Only seekers can access dashboard"
+        }
+
+        Error (400):
+        {
+            "status": "error",
+            "message": "Profile incomplete. Please complete your profile setup."
+        }
+    """
+    try:
+        user = request.user
+
+        # Check if user has profile
+        try:
+            user_profile = UserProfile.objects.select_related('wallet').get(user=user)
+        except UserProfile.DoesNotExist:
+            return Response({
+                "status": "error",
+                "message": "User profile not found. Please complete profile setup."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Check if user is seeker
+        if user_profile.user_type != 'seeker':
+            return Response({
+                "status": "error",
+                "message": "Only seekers can access dashboard"
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        # Allow access to dashboard even if profile incomplete
+        # They can see what needs to be completed via profile_complete field in response
+
+        # 1. Get search status from SeekerSearchPreference
+        from apps.core.models import SeekerSearchPreference
+
+        seeker_search = SeekerSearchPreference.objects.filter(user=user).first()
+        search_status_data = {
+            "is_searching": seeker_search.is_searching if seeker_search else False,
+            "last_updated": seeker_search.last_search_at.isoformat() if seeker_search and seeker_search.last_search_at else None
+        }
+
+        # 2. Get wallet data (no subscription details for seekers)
+        # Check if wallet exists, if not create it
+        if hasattr(user_profile, 'wallet'):
+            wallet = user_profile.wallet
+        else:
+            # Create wallet if doesn't exist
+            from apps.profiles.models import Wallet
+            wallet = Wallet.objects.create(
+                user_profile=user_profile,
+                balance=0.00,
+                currency='INR'
+            )
+
+        wallet_data = {
+            "balance": float(wallet.balance),
+            "currency": wallet.currency
+        }
+
+        # 3. Get active services count (services with active WorkSession where seeker is the customer)
+        from apps.profiles.work_assignment_models import WorkOrder, WorkSession
+
+        active_services_count = WorkSession.objects.filter(
+            work_order__seeker=user,
+            connection_state='active'
+        ).count()
+
+        services_data = {
+            "active_services": active_services_count
+        }
+
+        # 4. Get previous services (5 most recent, all statuses) - show provider name
+        work_orders = WorkOrder.objects.filter(
+            seeker=user
+        ).select_related('provider__profile').order_by('-created_at')[:5]
+
+        previous_services = []
+        for order in work_orders:
+            # Format date and time
+            created_at = order.created_at
+            date_str = created_at.strftime("%Y-%m-%d")
+            time_str = created_at.strftime("%I:%M %p")
+
+            previous_services.append({
+                "provider_name": order.provider_profile.full_name if hasattr(order, 'provider_profile') else "Unknown",
+                "date": date_str,
+                "time": time_str,
+                "status": order.status
+            })
+
+        # 5. Get active offers (sorted by priority, only active and not expired) - same as provider
+        from apps.profiles.models import Offer
+        from django.utils import timezone
+
+        active_offers = Offer.objects.filter(
+            is_active=True,
+            valid_until__gt=timezone.now()
+        ).order_by('priority', '-created_at')
+
+        offers_data = []
+        for offer in active_offers:
+            offers_data.append({
+                "offer_id": offer.offer_id,
+                "title": offer.title,
+                "description": offer.description,
+                "image_url": offer.image_url,
+                "valid_until": offer.valid_until.isoformat(),
+                "is_active": offer.is_active,
+                "priority": offer.priority
+            })
+
+        # 6. Get maintenance mode status (from the first offer record, default to False)
+        maintenance_mode = False
+        first_offer = Offer.objects.first()
+        if first_offer:
+            maintenance_mode = first_offer.maintenance_mode
+
+        # Build response
+        response_data = {
+            "status": "success",
+            "message": "seeker dashboard data fetched successfully",
+            "data": {
+                "profile_complete": user_profile.profile_complete,
+                "search_status": search_status_data,
+                "wallet": wallet_data,
+                "services": services_data,
+                "offers": offers_data,
+                "previous_services": previous_services,
+                "maintenance_mode": maintenance_mode
+            }
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in seeker dashboard API: {str(e)}")
+        return Response({
+            "status": "error",
+            "message": "An unexpected server error occurred. Please try again."
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_wallet_details_api(request, version=None):
     """
     Get user's wallet details including balance, subscription status, and recent transactions
