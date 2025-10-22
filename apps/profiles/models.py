@@ -126,9 +126,16 @@ class UserProfile(BaseModel):
 
         elif self.user_type == 'provider':
             # Provider needs service-specific data and portfolio images
+
+            # Check if this user recently switched from seeker to provider
+            # If so, preserve can_access_app to allow them to complete provider profile
+            was_seeker = self.previous_user_type == 'seeker'
+
             if not self.service_type:
                 self.profile_complete = False
-                self.can_access_app = False
+                # Preserve can_access_app for users who switched from seeker
+                if not was_seeker:
+                    self.can_access_app = False
                 self.save(update_fields=['profile_complete', 'can_access_app'])
                 return False
 
@@ -136,7 +143,9 @@ class UserProfile(BaseModel):
             portfolio_count = self.service_portfolio_images.count()
             if portfolio_count == 0:
                 self.profile_complete = False
-                self.can_access_app = False
+                # Preserve can_access_app for users who switched from seeker
+                if not was_seeker:
+                    self.can_access_app = False
                 self.save(update_fields=['profile_complete', 'can_access_app'])
                 return False
 
@@ -168,7 +177,9 @@ class UserProfile(BaseModel):
                 self.can_access_app = True
             else:
                 self.profile_complete = False
-                self.can_access_app = False
+                # Preserve can_access_app for users who switched from seeker
+                if not was_seeker:
+                    self.can_access_app = False
 
             self.save(update_fields=['profile_complete', 'can_access_app'])
             return self.profile_complete
