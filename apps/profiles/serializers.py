@@ -1440,12 +1440,19 @@ class RoleSwitchSerializer(serializers.Serializer):
         # Set is_active_for_work to False when switching roles
         user_profile.is_active_for_work = False
 
-        # Profile completion will need to be re-evaluated
-        # Don't auto-set to False - let check_profile_completion handle it
+        # Save the profile first
         user_profile.save()
 
-        # Re-check profile completion status
-        user_profile.check_profile_completion()
+        # Handle profile completion based on role switch direction
+        if new_user_type == 'provider' and previous_user_type == 'seeker':
+            # Preserve can_access_app when switching from seeker to provider
+            # They already had access as seeker, so maintain it while they complete provider profile
+            user_profile.profile_complete = False  # They need to complete provider-specific requirements
+            user_profile.can_access_app = True     # But still allow app access
+            user_profile.save(update_fields=['profile_complete', 'can_access_app'])
+        else:
+            # For other role switches (provider → seeker, or first-time setup), use normal completion check
+            user_profile.check_profile_completion()
 
         # Create history record
         RoleSwitchHistory.objects.create(
