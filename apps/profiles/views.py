@@ -265,26 +265,25 @@ def get_profile_api(request, version=None):
         except LicenseVerification.DoesNotExist:
             pass
 
-        # Get wallet data (only for providers)
+        # Get wallet data (for both providers and seekers)
         wallet_data = None
-        if profile.user_type == 'provider':
-            try:
-                wallet = profile.wallet
-                wallet_data = {
-                    "balance": float(wallet.balance),
-                    "currency": wallet.currency
-                }
-            except Wallet.DoesNotExist:
-                # Create wallet if it doesn't exist
-                wallet = Wallet.objects.create(
-                    user_profile=profile,
-                    balance=0.00,
-                    currency='INR'
-                )
-                wallet_data = {
-                    "balance": 0.00,
-                    "currency": "INR"
-                }
+        try:
+            wallet = profile.wallet
+            wallet_data = {
+                "balance": float(wallet.balance),
+                "currency": wallet.currency
+            }
+        except Wallet.DoesNotExist:
+            # Create wallet if it doesn't exist
+            wallet = Wallet.objects.create(
+                user_profile=profile,
+                balance=0.00,
+                currency='INR'
+            )
+            wallet_data = {
+                "balance": 0.00,
+                "currency": "INR"
+            }
 
         # Get rating summary (only for providers)
         rating_summary = None
@@ -689,7 +688,8 @@ def provider_dashboard_api(request, version=None):
 @permission_classes([IsAuthenticated])
 def get_wallet_details_api(request, version=None):
     """
-    Get provider's wallet details including balance, subscription status, and recent transactions
+    Get user's wallet details including balance, subscription status, and recent transactions
+    Works for both providers and seekers
 
     GET /api/1/profiles/wallet/
 
@@ -725,16 +725,10 @@ def get_wallet_details_api(request, version=None):
             }
         }
 
-        Error (403):
-        {
-            "status": "error",
-            "message": "Only providers can access wallet details"
-        }
-
         Error (404):
         {
             "status": "error",
-            "message": "Wallet not found for this provider"
+            "message": "User profile not found. Please complete profile setup."
         }
     """
     try:
@@ -749,14 +743,7 @@ def get_wallet_details_api(request, version=None):
                 "message": "User profile not found. Please complete profile setup."
             }, status=status.HTTP_404_NOT_FOUND)
 
-        # Check if user is provider
-        if user_profile.user_type != 'provider':
-            return Response({
-                "status": "error",
-                "message": "Only providers can access wallet details"
-            }, status=status.HTTP_403_FORBIDDEN)
-
-        # Get or create wallet
+        # Get or create wallet for both providers and seekers
         wallet, created = Wallet.objects.get_or_create(
             user_profile=user_profile,
             defaults={

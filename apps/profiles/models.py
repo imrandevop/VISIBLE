@@ -353,12 +353,11 @@ class ProviderReview(BaseModel):
 
 
 class Wallet(BaseModel):
-    """Provider wallet for managing earnings"""
+    """User wallet for managing earnings, payments, and subscriptions"""
     user_profile = models.OneToOneField(
         UserProfile,
         on_delete=models.CASCADE,
-        related_name='wallet',
-        limit_choices_to={'user_type': 'provider'}
+        related_name='wallet'
     )
     balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     currency = models.CharField(max_length=3, default='INR')
@@ -406,12 +405,12 @@ class Wallet(BaseModel):
         return True, "Payment successful. You can go online/offline for the next 24 hours."
 
     class Meta:
-        verbose_name = "Provider Wallet"
-        verbose_name_plural = "Provider Wallets"
+        verbose_name = "User Wallet"
+        verbose_name_plural = "User Wallets"
 
 
 class WalletTransaction(BaseModel):
-    """Transaction history for provider wallet"""
+    """Transaction history for user wallet"""
     TRANSACTION_TYPE_CHOICES = [
         ('credit', 'Credit'),
         ('debit', 'Debit'),

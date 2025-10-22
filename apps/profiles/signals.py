@@ -7,12 +7,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 @receiver(post_save, sender=UserProfile)
-def create_provider_wallet(sender, instance, created, **kwargs):
+def create_user_wallet(sender, instance, created, **kwargs):
     """
-    Automatically create a wallet when a provider profile is created
+    Automatically create a wallet when a user profile is created (both provider and seeker)
     """
-    # Only create wallet for providers
-    if instance.user_type == 'provider':
+    # Create wallet for both providers and seekers
+    if instance.user_type in ['provider', 'seeker']:
         # Check if wallet doesn't exist
         if not hasattr(instance, 'wallet'):
             try:
@@ -21,6 +21,6 @@ def create_provider_wallet(sender, instance, created, **kwargs):
                     balance=0.00,
                     currency='INR'
                 )
-                logger.info(f"✅ Wallet created for provider: {instance.full_name}")
+                logger.info(f"✅ Wallet created for {instance.user_type}: {instance.full_name}")
             except Exception as e:
-                logger.error(f"❌ Error creating wallet for provider {instance.id}: {e}")
+                logger.error(f"❌ Error creating wallet for {instance.user_type} {instance.id}: {e}")

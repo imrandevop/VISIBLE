@@ -614,8 +614,9 @@ class WalletTransactionInline(admin.TabularInline):
 @admin.register(Wallet)
 class WalletAdmin(admin.ModelAdmin):
     list_display = [
-        'provider_name',
-        'provider_mobile',
+        'user_name',
+        'user_type',
+        'user_mobile',
         'balance_display',
         'subscription_status',
         'subscription_expires',
@@ -624,6 +625,7 @@ class WalletAdmin(admin.ModelAdmin):
 
     list_filter = [
         'currency',
+        'user_profile__user_type',
         'created_at',
         'last_online_payment_at'
     ]
@@ -644,7 +646,7 @@ class WalletAdmin(admin.ModelAdmin):
     ]
 
     fieldsets = (
-        ('Provider Information', {
+        ('User Information', {
             'fields': ('user_profile',)
         }),
         ('Wallet Balance', {
@@ -665,15 +667,25 @@ class WalletAdmin(admin.ModelAdmin):
 
     inlines = [WalletTransactionInline]
 
-    def provider_name(self, obj):
+    def user_name(self, obj):
         return obj.user_profile.full_name
-    provider_name.short_description = 'Provider Name'
-    provider_name.admin_order_field = 'user_profile__full_name'
+    user_name.short_description = 'User Name'
+    user_name.admin_order_field = 'user_profile__full_name'
 
-    def provider_mobile(self, obj):
+    def user_type(self, obj):
+        user_type = obj.user_profile.user_type
+        if user_type == 'provider':
+            return format_html('<span style="color: blue; font-weight: bold;">Provider</span>')
+        elif user_type == 'seeker':
+            return format_html('<span style="color: green; font-weight: bold;">Seeker</span>')
+        return user_type.capitalize()
+    user_type.short_description = 'User Type'
+    user_type.admin_order_field = 'user_profile__user_type'
+
+    def user_mobile(self, obj):
         return obj.user_profile.user.mobile_number
-    provider_mobile.short_description = 'Mobile'
-    provider_mobile.admin_order_field = 'user_profile__user__mobile_number'
+    user_mobile.short_description = 'Mobile'
+    user_mobile.admin_order_field = 'user_profile__user__mobile_number'
 
     def balance_display(self, obj):
         return f"₹{obj.balance}"
@@ -725,7 +737,8 @@ class WalletAdmin(admin.ModelAdmin):
 class WalletTransactionAdmin(admin.ModelAdmin):
     list_display = [
         'id',
-        'provider_name',
+        'user_name',
+        'user_type',
         'transaction_type_display',
         'amount_display',
         'balance_after_display',
@@ -735,6 +748,7 @@ class WalletTransactionAdmin(admin.ModelAdmin):
 
     list_filter = [
         'transaction_type',
+        'wallet__user_profile__user_type',
         'created_at'
     ]
 
@@ -776,10 +790,20 @@ class WalletTransactionAdmin(admin.ModelAdmin):
         # Regular users cannot delete transaction history
         return request.user.is_superuser
 
-    def provider_name(self, obj):
+    def user_name(self, obj):
         return obj.wallet.user_profile.full_name
-    provider_name.short_description = 'Provider'
-    provider_name.admin_order_field = 'wallet__user_profile__full_name'
+    user_name.short_description = 'User'
+    user_name.admin_order_field = 'wallet__user_profile__full_name'
+
+    def user_type(self, obj):
+        user_type = obj.wallet.user_profile.user_type
+        if user_type == 'provider':
+            return format_html('<span style="color: blue; font-weight: bold;">Provider</span>')
+        elif user_type == 'seeker':
+            return format_html('<span style="color: green; font-weight: bold;">Seeker</span>')
+        return user_type.capitalize()
+    user_type.short_description = 'User Type'
+    user_type.admin_order_field = 'wallet__user_profile__user_type'
 
     def transaction_type_display(self, obj):
         if obj.transaction_type == 'credit':
