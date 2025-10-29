@@ -1,5 +1,6 @@
 # apps/profiles/utils.py
 from django.db.models import Q
+from apps.core.models import ProviderActiveStatus
 
 
 def can_switch_role(user_profile):
@@ -51,8 +52,19 @@ def can_switch_role(user_profile):
             return False, "You have recent wallet transactions. Please wait a few minutes before switching roles."
 
     # Check if provider is currently active for work
-    if user_profile.user_type == 'provider' and user_profile.is_active_for_work:
-        return False, "Please go offline before switching roles."
+    if user_profile.user_type == 'provider':
+        # Check UserProfile.is_active_for_work field
+        if user_profile.is_active_for_work:
+            return False, "Please go offline before switching roles."
+
+        # Also check ProviderActiveStatus model (used by dashboard/location services)
+        provider_status = ProviderActiveStatus.objects.filter(
+            user=user_profile.user,
+            is_active=True
+        ).exists()
+
+        if provider_status:
+            return False, "Please go offline before switching roles."
 
     # All checks passed
     return True, None
