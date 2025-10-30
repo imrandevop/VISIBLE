@@ -329,11 +329,19 @@ def seeker_search_toggle(request, version=None):
                     provider.latitude, provider.longitude
                 )
 
-
+                # Check both: seeker's search radius AND provider's service coverage area
+                # Provider must be within seeker's search radius
+                # AND seeker must be within provider's service coverage area
                 if distance <= distance_radius:
                     try:
                         # Get complete provider profile data
                         profile = provider.user.profile
+
+                        # Check if provider has service_coverage_area set and if seeker is within it
+                        if profile.service_coverage_area and distance > profile.service_coverage_area:
+                            # Seeker is outside provider's service coverage area, skip this provider
+                            continue
+
                         provider_data = get_complete_provider_data(profile, sub_category, distance, provider.latitude, provider.longitude)
                         if provider_data:
                             nearby_providers.append(provider_data)
@@ -435,6 +443,13 @@ def notify_seekers_about_provider_status_change(provider_user_id, category_code,
             if is_online and distance > seeker_pref.distance_radius:
                 logger.info(f"⚠️ Seeker {seeker_pref.user.mobile_number} is OUT OF RANGE (distance={distance:.2f}km > radius={seeker_pref.distance_radius}km)")
                 continue
+
+            # Check provider's service coverage area
+            provider_profile = provider_status.user.profile
+            if is_online and provider_profile.service_coverage_area:
+                if distance > provider_profile.service_coverage_area:
+                    logger.info(f"⚠️ Seeker {seeker_pref.user.mobile_number} is OUTSIDE provider's service coverage area (distance={distance:.2f}km > coverage={provider_profile.service_coverage_area}km)")
+                    continue
 
             if distance <= seeker_pref.distance_radius:
                 logger.info(f"✅ Seeker {seeker_pref.user.mobile_number} is within range!")
@@ -627,6 +642,7 @@ def get_complete_provider_data(profile, subcategory, distance, provider_lat, pro
             'years_experience': experience,
             'user_type': profile.user_type,
             'service_type': profile.service_type,
+            'service_coverage_area': profile.service_coverage_area,  # Coverage area in km
             'rating': rating_data['rating'],
             'total_reviews': rating_data['total_reviews'],
             'rating_distribution': rating_data['rating_distribution'],

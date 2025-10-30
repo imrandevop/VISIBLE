@@ -212,6 +212,14 @@ def assign_work(request, version=None):
                 provider_lat, provider_lng
             )
 
+            # Validate service coverage area
+            if provider_profile.service_coverage_area:
+                if calculated_distance > provider_profile.service_coverage_area:
+                    return Response({
+                        'status': 'error',
+                        'message': f'Work location is outside provider\'s service coverage area. Provider covers up to {provider_profile.service_coverage_area}km, but work location is {round(calculated_distance, 2)}km away.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
         # Check for existing pending work orders
         existing_order = WorkOrder.objects.filter(
             seeker=seeker,
