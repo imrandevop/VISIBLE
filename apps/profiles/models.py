@@ -27,7 +27,12 @@ class UserProfile(BaseModel):
         ('properties', 'Properties'),
         ('SOS', 'Emergency Services'),
     ]
-    
+
+    SEEKER_TYPE_CHOICES = [
+        ('individual', 'Individual'),
+        ('business', 'Business'),
+    ]
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, 
         on_delete=models.CASCADE,
@@ -49,6 +54,17 @@ class UserProfile(BaseModel):
     service_type = models.CharField(max_length=15, choices=SERVICE_TYPE_CHOICES, null=True, blank=True, help_text="Service type for providers")
     languages = models.TextField(blank=True, null=True, help_text="Languages spoken by the user as comma-separated")
     provider_id = models.CharField(max_length=10, unique=True, blank=True, null=True, help_text="Unique provider ID (2 letters + 8 digits)")
+
+    # Seeker business profile fields
+    seeker_type = models.CharField(max_length=15, choices=SEEKER_TYPE_CHOICES, null=True, blank=True, help_text="Type of seeker (individual or business)")
+    business_name = models.CharField(max_length=200, null=True, blank=True, help_text="Business name for business-type seekers")
+    business_location = models.CharField(max_length=300, null=True, blank=True, help_text="Business location/address")
+    established_date = models.DateField(null=True, blank=True, help_text="Date when business was established")
+    website = models.URLField(max_length=300, null=True, blank=True, help_text="Business website (optional)")
+
+    # Provider service coverage area
+    service_coverage_area = models.PositiveIntegerField(null=True, blank=True, help_text="Service coverage area in kilometers (how far the provider can travel)")
+
     profile_complete = models.BooleanField(default=False)
     can_access_app = models.BooleanField(default=False)
 
@@ -118,7 +134,22 @@ class UserProfile(BaseModel):
             return False
 
         if self.user_type == 'seeker':
-            # Seeker just needs basic profile
+            # Check if business-type seeker
+            if self.seeker_type == 'business':
+                # Business seekers need additional business fields
+                business_complete = all([
+                    self.business_name,
+                    self.business_location,
+                    self.established_date,
+                    # website is optional
+                ])
+                if not business_complete:
+                    self.profile_complete = False
+                    self.can_access_app = False
+                    self.save(update_fields=['profile_complete', 'can_access_app'])
+                    return False
+
+            # Individual seeker or business seeker with complete profile
             self.profile_complete = True
             self.can_access_app = True
             self.save(update_fields=['profile_complete', 'can_access_app'])
@@ -202,6 +233,7 @@ class VehicleServiceData(BaseModel):
     vehicle_registration_number = models.CharField(max_length=20)
     years_experience = models.IntegerField()
     driving_experience_description = models.TextField()
+    service_offering_types = models.TextField(blank=True, null=True, help_text="Service offering types as comma-separated (rent, sale, lease, all)")
 
     def __str__(self):
         return f"{self.user_profile.full_name} - Vehicle Service"
@@ -230,6 +262,7 @@ class PropertyServiceData(BaseModel):
     parking_availability = models.CharField(max_length=20, choices=PARKING_CHOICES, null=True, blank=True)
     furnishing_type = models.CharField(max_length=20, choices=FURNISHING_CHOICES, null=True, blank=True)
     property_description = models.TextField()
+    service_offering_types = models.TextField(blank=True, null=True, help_text="Service offering types as comma-separated (rent, sale, lease, all)")
 
     def __str__(self):
         return f"{self.user_profile.full_name} - Property Service: {self.property_title}"

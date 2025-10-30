@@ -50,6 +50,16 @@ class ProfileSetupSerializer(serializers.Serializer):
         help_text="Array of languages spoken, supports indexed operations"
     )
 
+    # Seeker Business Profile Fields
+    seeker_type = serializers.ChoiceField(choices=['individual', 'business'], required=False, allow_null=True, help_text="Type of seeker (individual or business)")
+    business_name = serializers.CharField(max_length=200, required=False, allow_blank=True, help_text="Business name for business-type seekers")
+    business_location = serializers.CharField(max_length=300, required=False, allow_blank=True, help_text="Business location/address")
+    established_date = serializers.DateField(required=False, allow_null=True, help_text="Date when business was established")
+    website = serializers.URLField(max_length=300, required=False, allow_blank=True, allow_null=True, help_text="Business website (optional)")
+
+    # Provider Service Coverage Area
+    service_coverage_area = serializers.IntegerField(required=False, allow_null=True, min_value=1, help_text="Service coverage area in kilometers")
+
     # Portfolio Images (Required for all providers, max 3)
     # Supports both files and URLs (handled in to_internal_value)
     # Uses custom FlexibleImageField to accept files, URLs, dicts, and null values
@@ -81,6 +91,12 @@ class ProfileSetupSerializer(serializers.Serializer):
     license_number = serializers.CharField(required=False, allow_blank=True, max_length=50)
     vehicle_registration_number = serializers.CharField(required=False, allow_blank=True, max_length=20)
     driving_experience_description = serializers.CharField(required=False, allow_blank=True)
+    vehicle_service_offering_types = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_empty=True,
+        help_text="Service offering types for vehicles (rent, sale, lease, all)"
+    )
 
     # Property-specific Fields
     property_types = serializers.ListField(
@@ -102,6 +118,12 @@ class ProfileSetupSerializer(serializers.Serializer):
         allow_null=True
     )
     property_description = serializers.CharField(required=False, allow_blank=True)
+    property_service_offering_types = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_empty=True,
+        help_text="Service offering types for properties (rent, sale, lease, all)"
+    )
 
     # SOS/Emergency-specific Fields
     emergency_service_types = serializers.ListField(
@@ -362,11 +384,32 @@ class ProfileSetupSerializer(serializers.Serializer):
                 if not attrs.get(field):
                     raise serializers.ValidationError({field: message})
 
+            # Seeker-specific validation for create
+            if user_type == 'seeker':
+                seeker_type = attrs.get('seeker_type')
+                # If seeker_type is business, validate business fields
+                if seeker_type == 'business':
+                    required_business_fields = {
+                        'business_name': 'Business name is required for business-type seekers',
+                        'business_location': 'Business location is required for business-type seekers',
+                        'established_date': 'Established date is required for business-type seekers'
+                        # website is optional
+                    }
+                    for field, message in required_business_fields.items():
+                        if not attrs.get(field):
+                            raise serializers.ValidationError({field: message})
+
             # Provider-specific validation for create
             if user_type == 'provider':
                 if not service_type:
                     raise serializers.ValidationError({
                         'service_type': 'Service type is required for providers'
+                    })
+
+                # Service coverage area is required for all providers
+                if not attrs.get('service_coverage_area'):
+                    raise serializers.ValidationError({
+                        'service_coverage_area': 'Service coverage area is required for all providers'
                     })
 
                 # Portfolio images are no longer required
@@ -390,6 +433,20 @@ class ProfileSetupSerializer(serializers.Serializer):
             # If user tries to change user_type or service_type, validate it's allowed
             # (Currently allowed as per your requirement #2: no protected fields)
 
+            # If seeker and updating seeker_type to business, validate business fields
+            if user_type == 'seeker':
+                seeker_type = attrs.get('seeker_type') or (existing_profile.seeker_type if existing_profile else None)
+                if seeker_type == 'business':
+                    # Check if any business fields are being updated
+                    if any(k in attrs for k in ['business_name', 'business_location', 'established_date', 'website']):
+                        # Validate that required business fields are present (either in attrs or existing profile)
+                        for field in ['business_name', 'business_location', 'established_date']:
+                            value = attrs.get(field) or (getattr(existing_profile, field, None) if existing_profile else None)
+                            if not value:
+                                raise serializers.ValidationError({
+                                    field: f'{field.replace("_", " ").title()} is required for business-type seekers'
+                                })
+
             # If provider and updating category/service fields, validate them
             if user_type == 'provider':
                 # Only validate category fields if they're being updated
@@ -399,9 +456,9 @@ class ProfileSetupSerializer(serializers.Serializer):
                 # Only validate service-specific fields if they're being updated
                 if service_type == 'skill' and any(k in attrs for k in ['years_experience', 'skills']):
                     self._validate_skill_fields(attrs, is_required=False)
-                elif service_type == 'vehicle' and any(k in attrs for k in ['vehicle_types', 'license_number', 'vehicle_registration_number', 'driving_experience_description']):
+                elif service_type == 'vehicle' and any(k in attrs for k in ['vehicle_types', 'license_number', 'vehicle_registration_number', 'driving_experience_description', 'vehicle_service_offering_types']):
                     self._validate_vehicle_fields(attrs, is_required=False)
-                elif service_type == 'properties' and any(k in attrs for k in ['property_types', 'property_title', 'property_description']):
+                elif service_type == 'properties' and any(k in attrs for k in ['property_types', 'property_title', 'property_description', 'property_service_offering_types']):
                     self._validate_property_fields(attrs, is_required=False)
                 elif service_type == 'SOS' and any(k in attrs for k in ['emergency_service_types', 'contact_number', 'current_location', 'emergency_description']):
                     self._validate_sos_fields(attrs, is_required=False)
@@ -496,12 +553,23 @@ class ProfileSetupSerializer(serializers.Serializer):
                 'license_number': 'License number is required for vehicle providers',
                 'vehicle_registration_number': 'Vehicle registration number is required for vehicle providers',
                 'years_experience': 'Years of experience is required for vehicle providers',
-                'driving_experience_description': 'Driving experience description is required for vehicle providers'
+                'driving_experience_description': 'Driving experience description is required for vehicle providers',
+                'vehicle_service_offering_types': 'Service offering types are required for vehicle providers (rent, sale, lease, or all)'
             }
 
             for field, message in required_fields.items():
                 if not attrs.get(field):
                     raise serializers.ValidationError({field: message})
+
+        # Validate service_offering_types values
+        vehicle_service_offering_types = attrs.get('vehicle_service_offering_types', [])
+        if vehicle_service_offering_types:
+            valid_types = ['rent', 'sale', 'lease', 'all']
+            invalid_types = [t for t in vehicle_service_offering_types if t.lower() not in valid_types]
+            if invalid_types:
+                raise serializers.ValidationError({
+                    'vehicle_service_offering_types': f'Invalid service offering types: {", ".join(invalid_types)}. Valid options are: rent, sale, lease, all'
+                })
 
     def _validate_property_fields(self, attrs, is_required=True):
         """Validate property-specific required fields"""
@@ -509,12 +577,23 @@ class ProfileSetupSerializer(serializers.Serializer):
             required_fields = {
                 'property_types': 'Property types are required for property services',
                 'property_title': 'Property title is required for property services',
-                'property_description': 'Property description is required for property services'
+                'property_description': 'Property description is required for property services',
+                'property_service_offering_types': 'Service offering types are required for property providers (rent, sale, lease, or all)'
             }
 
             for field, message in required_fields.items():
                 if not attrs.get(field):
                     raise serializers.ValidationError({field: message})
+
+        # Validate service_offering_types values
+        property_service_offering_types = attrs.get('property_service_offering_types', [])
+        if property_service_offering_types:
+            valid_types = ['rent', 'sale', 'lease', 'all']
+            invalid_types = [t for t in property_service_offering_types if t.lower() not in valid_types]
+            if invalid_types:
+                raise serializers.ValidationError({
+                    'property_service_offering_types': f'Invalid service offering types: {", ".join(invalid_types)}. Valid options are: rent, sale, lease, all'
+                })
 
     def _validate_sos_fields(self, attrs, is_required=True):
         """Validate SOS/Emergency-specific required fields"""
@@ -830,7 +909,8 @@ class ProfileSetupSerializer(serializers.Serializer):
                 'license_number': validated_data.get('license_number', ''),
                 'vehicle_registration_number': validated_data.get('vehicle_registration_number', ''),
                 'years_experience': validated_data.get('years_experience', 0),
-                'driving_experience_description': validated_data.get('driving_experience_description', '')
+                'driving_experience_description': validated_data.get('driving_experience_description', ''),
+                'service_offering_types': ','.join(validated_data.get('vehicle_service_offering_types', []))
             }
         )
 
@@ -843,7 +923,8 @@ class ProfileSetupSerializer(serializers.Serializer):
                 'property_title': validated_data.get('property_title', ''),
                 'parking_availability': validated_data.get('parking_availability'),
                 'furnishing_type': validated_data.get('furnishing_type'),
-                'property_description': validated_data.get('property_description', '')
+                'property_description': validated_data.get('property_description', ''),
+                'service_offering_types': ','.join(validated_data.get('property_service_offering_types', []))
             }
         )
 
@@ -904,7 +985,8 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'full_name', 'user_type', 'service_type', 'gender', 'date_of_birth', 'age',
             'profile_photo', 'profile_complete', 'can_access_app',
-            'mobile_number', 'languages', 'provider_id',
+            'mobile_number', 'languages', 'provider_id', 'service_coverage_area',
+            'seeker_type', 'business_name', 'business_location', 'established_date', 'website',
             'portfolio_images', 'service_data',
             'created_at', 'updated_at'
         ]
@@ -992,7 +1074,8 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
                 'vehicle_types': vehicle_data.vehicle_types.split(',') if vehicle_data.vehicle_types else [],
                 'license_number': vehicle_data.license_number,
                 'vehicle_registration_number': vehicle_data.vehicle_registration_number,
-                'driving_experience_description': vehicle_data.driving_experience_description
+                'driving_experience_description': vehicle_data.driving_experience_description,
+                'service_offering_types': vehicle_data.service_offering_types.split(',') if vehicle_data.service_offering_types else []
             })
 
         return data if data else None
@@ -1020,7 +1103,8 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
                 'property_title': property_data.property_title,
                 'parking_availability': property_data.parking_availability,
                 'furnishing_type': property_data.furnishing_type,
-                'property_description': property_data.property_description
+                'property_description': property_data.property_description,
+                'service_offering_types': property_data.service_offering_types.split(',') if property_data.service_offering_types else []
             })
 
         return data if data else None
