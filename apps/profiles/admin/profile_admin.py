@@ -132,14 +132,14 @@ class UserProfileAdmin(admin.ModelAdmin):
     profile_photo_preview.short_description = 'Photo Preview'
     
     def work_details_link(self, obj):
-        if obj.user_type == 'worker':
+        if obj.service_type == 'skill':
             try:
                 work_selection = obj.work_selection
                 url = reverse('admin:work_categories_userworkselection_change', args=[work_selection.id])
                 return format_html('<a href="{}" target="_blank">View Work Details</a>', url)
             except:
                 return "No work details found"
-        return "Not a worker"
+        return "Not a skill provider"
     work_details_link.short_description = 'Work Details'
     
     def mark_profile_complete(self, request, queryset):

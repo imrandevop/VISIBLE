@@ -12,7 +12,7 @@ import hashlib
 from urllib.parse import urlparse
 
 from apps.profiles.models import (
-    UserProfile, DriverServiceData, PropertyServiceData,
+    UserProfile, VehicleServiceData, PropertyServiceData,
     SOSServiceData, ServicePortfolioImage, Wallet, WalletTransaction
 )
 from apps.work_categories.models import (

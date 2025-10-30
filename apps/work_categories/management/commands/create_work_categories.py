@@ -6,20 +6,20 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         # Create main categories
-        worker_cat = WorkCategory.objects.get_or_create(
-            name='worker',
+        skill_cat = WorkCategory.objects.get_or_create(
+            name='skill',
             defaults={
-                'display_name': 'Worker',
-                'description': 'General workers and laborers',
+                'display_name': 'Skill',
+                'description': 'Skill-based services',
                 'sort_order': 1
             }
         )[0]
-        
-        driver_cat = WorkCategory.objects.get_or_create(
-            name='driver',
+
+        vehicle_cat = WorkCategory.objects.get_or_create(
+            name='vehicle',
             defaults={
-                'display_name': 'Driver',
-                'description': 'Professional drivers',
+                'display_name': 'Vehicle',
+                'description': 'Vehicle-based services',
                 'sort_order': 2
             }
         )[0]
@@ -33,33 +33,33 @@ class Command(BaseCommand):
             }
         )[0]
         
-        # Create subcategories for Worker
-        worker_subcats = [
+        # Create subcategories for Skill
+        skill_subcats = [
             ('construction', 'Construction Worker'),
             ('plumber', 'Plumber'),
             ('electrician', 'Electrician'),
             ('painter', 'Painter'),
             ('carpenter', 'Carpenter'),
         ]
-        
-        for name, display_name in worker_subcats:
+
+        for name, display_name in skill_subcats:
             WorkSubCategory.objects.get_or_create(
-                category=worker_cat,
+                category=skill_cat,
                 name=name,
                 defaults={'display_name': display_name}
             )
         
-        # Create subcategories for Driver
-        driver_subcats = [
-            ('taxi', 'Taxi Driver'),
-            ('delivery', 'Delivery Driver'),
-            ('truck', 'Truck Driver'),
-            ('auto', 'Auto Rickshaw Driver'),
+        # Create subcategories for Vehicle
+        vehicle_subcats = [
+            ('taxi', 'Taxi'),
+            ('delivery', 'Delivery'),
+            ('truck', 'Truck'),
+            ('auto', 'Auto Rickshaw'),
         ]
-        
-        for name, display_name in driver_subcats:
+
+        for name, display_name in vehicle_subcats:
             WorkSubCategory.objects.get_or_create(
-                category=driver_cat,
+                category=vehicle_cat,
                 name=name,
                 defaults={'display_name': display_name}
             )

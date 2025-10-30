@@ -542,10 +542,10 @@ class LocationConsumer(AsyncWebsocketConsumer):
             return None
 
         try:
-            if profile.service_type == 'worker':
-                return self.get_worker_service_data(profile)
-            elif profile.service_type == 'driver':
-                return self.get_driver_service_data(profile)
+            if profile.service_type == 'skill':
+                return self.get_skill_service_data(profile)
+            elif profile.service_type == 'vehicle':
+                return self.get_vehicle_service_data(profile)
             elif profile.service_type == 'properties':
                 return self.get_property_service_data(profile)
             elif profile.service_type == 'SOS':
@@ -556,8 +556,8 @@ class LocationConsumer(AsyncWebsocketConsumer):
 
         return None
 
-    def get_worker_service_data(self, profile):
-        """Get worker-specific service data"""
+    def get_skill_service_data(self, profile):
+        """Get skill-specific service data"""
         if hasattr(profile, 'work_selection') and profile.work_selection:
             work_selection = profile.work_selection
             subcategories = work_selection.selected_subcategories.all()
@@ -573,8 +573,8 @@ class LocationConsumer(AsyncWebsocketConsumer):
             }
         return None
 
-    def get_driver_service_data(self, profile):
-        """Get driver-specific service data"""
+    def get_vehicle_service_data(self, profile):
+        """Get vehicle-specific service data"""
         data = {}
 
         # Get category data from work selection
@@ -589,14 +589,14 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 'description': work_selection.skills
             })
 
-        # Get driver-specific data
-        if hasattr(profile, 'driver_service') and profile.driver_service:
-            driver_data = profile.driver_service
+        # Get vehicle-specific data
+        if hasattr(profile, 'vehicle_service') and profile.vehicle_service:
+            vehicle_data = profile.vehicle_service
             data.update({
-                'vehicle_types': driver_data.vehicle_types.split(',') if driver_data.vehicle_types else [],
-                'license_number': driver_data.license_number,
-                'vehicle_registration_number': driver_data.vehicle_registration_number,
-                'driving_experience_description': driver_data.driving_experience_description
+                'vehicle_types': vehicle_data.vehicle_types.split(',') if vehicle_data.vehicle_types else [],
+                'license_number': vehicle_data.license_number,
+                'vehicle_registration_number': vehicle_data.vehicle_registration_number,
+                'driving_experience_description': vehicle_data.driving_experience_description
             })
 
         return data if data else None

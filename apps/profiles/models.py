@@ -22,8 +22,8 @@ class UserProfile(BaseModel):
     ]
 
     SERVICE_TYPE_CHOICES = [
-        ('worker', 'Worker'),
-        ('driver', 'Driver'),
+        ('skill', 'Skill'),
+        ('vehicle', 'Vehicle'),
         ('properties', 'Properties'),
         ('SOS', 'Emergency Services'),
     ]
@@ -152,15 +152,15 @@ class UserProfile(BaseModel):
             # Check service-specific requirements
             service_complete = False
 
-            if self.service_type == 'worker':
-                # Worker needs work selection
+            if self.service_type == 'skill':
+                # Skill needs work selection
                 work_selection = hasattr(self, 'work_selection') and self.work_selection
                 service_complete = work_selection is not None
 
-            elif self.service_type == 'driver':
-                # Driver needs driver service data
-                driver_service = hasattr(self, 'driver_service') and self.driver_service
-                service_complete = driver_service is not None
+            elif self.service_type == 'vehicle':
+                # Vehicle needs vehicle service data
+                vehicle_service = hasattr(self, 'vehicle_service') and self.vehicle_service
+                service_complete = vehicle_service is not None
 
             elif self.service_type == 'properties':
                 # Properties needs property service data
@@ -190,12 +190,12 @@ class UserProfile(BaseModel):
         return False
 
 
-class DriverServiceData(BaseModel):
-    """Driver-specific service data"""
+class VehicleServiceData(BaseModel):
+    """Vehicle-specific service data"""
     user_profile = models.OneToOneField(
         UserProfile,
         on_delete=models.CASCADE,
-        related_name='driver_service'
+        related_name='vehicle_service'
     )
     vehicle_types = models.TextField(blank=True, null=True, help_text="Vehicle types as comma-separated")
     license_number = models.CharField(max_length=50)
@@ -204,7 +204,7 @@ class DriverServiceData(BaseModel):
     driving_experience_description = models.TextField()
 
     def __str__(self):
-        return f"{self.user_profile.full_name} - Driver Service"
+        return f"{self.user_profile.full_name} - Vehicle Service"
 
 
 class PropertyServiceData(BaseModel):

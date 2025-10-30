@@ -326,7 +326,7 @@ def delete_account_api(request, version=None):
             # This will automatically delete:
             # - UserProfile
             # - ServicePortfolioImage
-            # - DriverServiceData, PropertyServiceData, SOSServiceData
+            # - VehicleServiceData, PropertyServiceData, SOSServiceData
             # - Wallet and WalletTransaction
             # - ProviderRating, ProviderReview
             # - WorkOrder, WorkSession, ChatMessage

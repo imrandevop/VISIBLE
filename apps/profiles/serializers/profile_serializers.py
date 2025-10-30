@@ -12,7 +12,7 @@ from .serializer_utils import (
     get_existing_portfolio_urls, files_are_same, parse_multipart_array_fields
 )
 from apps.profiles.models import (
-    UserProfile, DriverServiceData, PropertyServiceData,
+    UserProfile, VehicleServiceData, PropertyServiceData,
     SOSServiceData, ServicePortfolioImage
 )
 from apps.work_categories.models import (
@@ -24,14 +24,14 @@ from apps.verification.models import AadhaarVerification, LicenseVerification
 class ProfileSetupSerializer(serializers.Serializer):
     """
     Comprehensive serializer for complete profile setup
-    Handles provider (worker, driver, properties, SOS) and seeker profiles
+    Handles provider (skill, vehicle, properties, SOS) and seeker profiles
     Supports both file uploads and URLs for images (profile_photo and portfolio_images)
     """
 
     # Basic Profile Fields (Required only on first create)
     user_type = serializers.ChoiceField(choices=['provider', 'seeker'], required=False, allow_null=True)
     service_type = serializers.ChoiceField(
-        choices=['worker', 'driver', 'properties', 'SOS'],
+        choices=['skill', 'vehicle', 'properties', 'SOS'],
         required=False,
         allow_null=True,
         help_text="Required for providers on first create"
@@ -60,7 +60,7 @@ class ProfileSetupSerializer(serializers.Serializer):
         max_length=3
     )
 
-    # Worker-specific Fields
+    # Skill-specific Fields
     main_category_id = serializers.CharField(required=False, allow_null=True)
     # Sub-category IDs - supports add/replace/delete operations with indices
     # Format: ["SS0001", "SS0002"] for adding, or [{"index": 0, "sub_category_id": "SS0003"}] for replace/delete
@@ -72,7 +72,7 @@ class ProfileSetupSerializer(serializers.Serializer):
     years_experience = serializers.IntegerField(required=False, allow_null=True, min_value=0)
     skills = serializers.CharField(required=False, allow_blank=True)
 
-    # Driver-specific Fields
+    # Vehicle-specific Fields
     vehicle_types = serializers.ListField(
         child=serializers.CharField(),
         required=False,
@@ -376,10 +376,10 @@ class ProfileSetupSerializer(serializers.Serializer):
                 self._validate_category_fields(attrs, is_required=True)
 
                 # Service-specific validation
-                if service_type == 'worker':
-                    self._validate_worker_fields(attrs, is_required=True)
-                elif service_type == 'driver':
-                    self._validate_driver_fields(attrs, is_required=True)
+                if service_type == 'skill':
+                    self._validate_skill_fields(attrs, is_required=True)
+                elif service_type == 'vehicle':
+                    self._validate_vehicle_fields(attrs, is_required=True)
                 elif service_type == 'properties':
                     self._validate_property_fields(attrs, is_required=True)
                 elif service_type == 'SOS':
@@ -397,10 +397,10 @@ class ProfileSetupSerializer(serializers.Serializer):
                     self._validate_category_fields(attrs, is_required=False)
 
                 # Only validate service-specific fields if they're being updated
-                if service_type == 'worker' and any(k in attrs for k in ['years_experience', 'skills']):
-                    self._validate_worker_fields(attrs, is_required=False)
-                elif service_type == 'driver' and any(k in attrs for k in ['vehicle_types', 'license_number', 'vehicle_registration_number', 'driving_experience_description']):
-                    self._validate_driver_fields(attrs, is_required=False)
+                if service_type == 'skill' and any(k in attrs for k in ['years_experience', 'skills']):
+                    self._validate_skill_fields(attrs, is_required=False)
+                elif service_type == 'vehicle' and any(k in attrs for k in ['vehicle_types', 'license_number', 'vehicle_registration_number', 'driving_experience_description']):
+                    self._validate_vehicle_fields(attrs, is_required=False)
                 elif service_type == 'properties' and any(k in attrs for k in ['property_types', 'property_title', 'property_description']):
                     self._validate_property_fields(attrs, is_required=False)
                 elif service_type == 'SOS' and any(k in attrs for k in ['emergency_service_types', 'contact_number', 'current_location', 'emergency_description']):
@@ -475,12 +475,12 @@ class ProfileSetupSerializer(serializers.Serializer):
                     attrs['_subcategories'] = sub_category_ids  # Keep original format (may include dicts)
                     attrs['_validated_subcategory_objects'] = {sub.subcategory_code: sub for sub in valid_subcategories}
 
-    def _validate_worker_fields(self, attrs, is_required=True):
-        """Validate worker-specific required fields"""
+    def _validate_skill_fields(self, attrs, is_required=True):
+        """Validate skill-specific required fields"""
         if is_required:
             required_fields = {
-                'years_experience': 'Years of experience is required for workers',
-                'skills': 'Skills description is required for workers'
+                'years_experience': 'Years of experience is required for skill providers',
+                'skills': 'Skills description is required for skill providers'
             }
 
             for field, message in required_fields.items():
@@ -488,15 +488,15 @@ class ProfileSetupSerializer(serializers.Serializer):
                 if not value and value != 0:  # Allow 0 for years_experience
                     raise serializers.ValidationError({field: message})
 
-    def _validate_driver_fields(self, attrs, is_required=True):
-        """Validate driver-specific required fields"""
+    def _validate_vehicle_fields(self, attrs, is_required=True):
+        """Validate vehicle-specific required fields"""
         if is_required:
             required_fields = {
-                'vehicle_types': 'Vehicle types are required for drivers',
-                'license_number': 'License number is required for drivers',
-                'vehicle_registration_number': 'Vehicle registration number is required for drivers',
-                'years_experience': 'Years of experience is required for drivers',
-                'driving_experience_description': 'Driving experience description is required for drivers'
+                'vehicle_types': 'Vehicle types are required for vehicle providers',
+                'license_number': 'License number is required for vehicle providers',
+                'vehicle_registration_number': 'Vehicle registration number is required for vehicle providers',
+                'years_experience': 'Years of experience is required for vehicle providers',
+                'driving_experience_description': 'Driving experience description is required for vehicle providers'
             }
 
             for field, message in required_fields.items():
@@ -647,14 +647,14 @@ class ProfileSetupSerializer(serializers.Serializer):
         if user_type == 'provider':
             # Update work selection data only if category fields are provided
             if main_category is not None or subcategories:
-                self._create_worker_data(profile, validated_data, main_category, subcategories)
+                self._create_skill_data(profile, validated_data, main_category, subcategories)
 
             # Update service-specific data only if relevant fields are provided
-            if service_type == 'driver':
-                # Check if any driver fields are provided
-                driver_fields = ['vehicle_types', 'license_number', 'vehicle_registration_number', 'years_experience', 'driving_experience_description']
-                if any(field in validated_data for field in driver_fields):
-                    self._create_driver_data(profile, validated_data)
+            if service_type == 'vehicle':
+                # Check if any vehicle fields are provided
+                vehicle_fields = ['vehicle_types', 'license_number', 'vehicle_registration_number', 'years_experience', 'driving_experience_description']
+                if any(field in validated_data for field in vehicle_fields):
+                    self._create_vehicle_data(profile, validated_data)
             elif service_type == 'properties':
                 # Check if any property fields are provided
                 property_fields = ['property_types', 'property_title', 'parking_availability', 'furnishing_type', 'property_description']
@@ -748,8 +748,8 @@ class ProfileSetupSerializer(serializers.Serializer):
 
         return profile
 
-    def _create_worker_data(self, profile, validated_data, main_category, subcategories):
-        """Create worker-specific data"""
+    def _create_skill_data(self, profile, validated_data, main_category, subcategories):
+        """Create skill-specific data"""
         work_selection, _ = UserWorkSelection.objects.update_or_create(
             user=profile,
             defaults={
@@ -821,9 +821,9 @@ class ProfileSetupSerializer(serializers.Serializer):
                                 sub_category=subcategory
                             )
 
-    def _create_driver_data(self, profile, validated_data):
-        """Create driver-specific data"""
-        DriverServiceData.objects.update_or_create(
+    def _create_vehicle_data(self, profile, validated_data):
+        """Create vehicle-specific data"""
+        VehicleServiceData.objects.update_or_create(
             user_profile=profile,
             defaults={
                 'vehicle_types': ','.join(validated_data.get('vehicle_types', [])),
@@ -874,14 +874,14 @@ class ProfileSetupSerializer(serializers.Serializer):
 
         license_number = validated_data.get('license_number')
         if license_number:
-            is_driver = service_type == 'driver'
+            is_vehicle = service_type == 'vehicle'
             LicenseVerification.objects.update_or_create(
                 user=profile,
                 defaults={
                     'license_number': license_number,
                     'license_type': validated_data.get('license_type', 'driving'),
                     'status': 'pending',
-                    'is_required': is_driver
+                    'is_required': is_vehicle
                 }
             )
 
@@ -943,10 +943,10 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
         if obj.user_type != 'provider' or not obj.service_type:
             return None
 
-        if obj.service_type == 'worker':
-            return self._get_worker_data(obj)
-        elif obj.service_type == 'driver':
-            return self._get_driver_data(obj)
+        if obj.service_type == 'skill':
+            return self._get_skill_data(obj)
+        elif obj.service_type == 'vehicle':
+            return self._get_vehicle_data(obj)
         elif obj.service_type == 'properties':
             return self._get_property_data(obj)
         elif obj.service_type == 'SOS':
@@ -954,8 +954,8 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
 
         return None
 
-    def _get_worker_data(self, obj):
-        """Get worker-specific data"""
+    def _get_skill_data(self, obj):
+        """Get skill-specific data"""
         if hasattr(obj, 'work_selection') and obj.work_selection:
             work_selection = obj.work_selection
             subcategories = work_selection.selected_subcategories.all()
@@ -970,8 +970,8 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
             }
         return None
 
-    def _get_driver_data(self, obj):
-        """Get driver-specific data including category data"""
+    def _get_vehicle_data(self, obj):
+        """Get vehicle-specific data including category data"""
         data = {}
 
         # Get category data from work selection
@@ -985,14 +985,14 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
                 'skills': work_selection.skills
             })
 
-        # Get driver-specific data
-        if hasattr(obj, 'driver_service') and obj.driver_service:
-            driver_data = obj.driver_service
+        # Get vehicle-specific data
+        if hasattr(obj, 'vehicle_service') and obj.vehicle_service:
+            vehicle_data = obj.vehicle_service
             data.update({
-                'vehicle_types': driver_data.vehicle_types.split(',') if driver_data.vehicle_types else [],
-                'license_number': driver_data.license_number,
-                'vehicle_registration_number': driver_data.vehicle_registration_number,
-                'driving_experience_description': driver_data.driving_experience_description
+                'vehicle_types': vehicle_data.vehicle_types.split(',') if vehicle_data.vehicle_types else [],
+                'license_number': vehicle_data.license_number,
+                'vehicle_registration_number': vehicle_data.vehicle_registration_number,
+                'driving_experience_description': vehicle_data.driving_experience_description
             })
 
         return data if data else None

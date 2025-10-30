@@ -663,10 +663,10 @@ def get_service_specific_data(profile):
         return None
 
     try:
-        if profile.service_type == 'worker':
-            return get_worker_service_data(profile)
-        elif profile.service_type == 'driver':
-            return get_driver_service_data(profile)
+        if profile.service_type == 'skill':
+            return get_skill_service_data(profile)
+        elif profile.service_type == 'vehicle':
+            return get_vehicle_service_data(profile)
         elif profile.service_type == 'properties':
             return get_property_service_data(profile)
         elif profile.service_type == 'SOS':
@@ -678,8 +678,8 @@ def get_service_specific_data(profile):
     return None
 
 
-def get_worker_service_data(profile):
-    """Get worker-specific service data"""
+def get_skill_service_data(profile):
+    """Get skill-specific service data"""
     if hasattr(profile, 'work_selection') and profile.work_selection:
         work_selection = profile.work_selection
         subcategories = work_selection.selected_subcategories.all()
@@ -699,8 +699,8 @@ def get_worker_service_data(profile):
     return None
 
 
-def get_driver_service_data(profile):
-    """Get driver-specific service data"""
+def get_vehicle_service_data(profile):
+    """Get vehicle-specific service data"""
     data = {}
 
     # Get category data from work selection
@@ -719,14 +719,14 @@ def get_driver_service_data(profile):
             'description': work_selection.skills
         })
 
-    # Get driver-specific data
-    if hasattr(profile, 'driver_service') and profile.driver_service:
-        driver_data = profile.driver_service
+    # Get vehicle-specific data
+    if hasattr(profile, 'vehicle_service') and profile.vehicle_service:
+        vehicle_data = profile.vehicle_service
         data.update({
-            'vehicle_types': driver_data.vehicle_types.split(',') if driver_data.vehicle_types else [],
-            'license_number': driver_data.license_number,
-            'vehicle_registration_number': driver_data.vehicle_registration_number,
-            'driving_experience_description': driver_data.driving_experience_description
+            'vehicle_types': vehicle_data.vehicle_types.split(',') if vehicle_data.vehicle_types else [],
+            'license_number': vehicle_data.license_number,
+            'vehicle_registration_number': vehicle_data.vehicle_registration_number,
+            'driving_experience_description': vehicle_data.driving_experience_description
         })
 
     return data if data else None

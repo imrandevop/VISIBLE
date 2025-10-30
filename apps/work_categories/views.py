@@ -25,16 +25,16 @@ def list_work_categories_api(request, version=None):
             "categories": [
                 {
                     "id": "MS0001",
-                    "name": "worker",
-                    "display_name": "Worker",
-                    "description": "General worker services",
+                    "name": "skill",
+                    "display_name": "Skill",
+                    "description": "General skill services",
                     "subcategories": "Plumber Electrician Carpenter Painter"
                 },
                 {
                     "id": "MS0002",
-                    "name": "driver",
-                    "display_name": "Driver",
-                    "description": "Transportation services",
+                    "name": "vehicle",
+                    "display_name": "Vehicle",
+                    "description": "Vehicle services",
                     "subcategories": "Taxi Delivery Truck Auto-Rickshaw"
                 },
                 {
@@ -90,7 +90,8 @@ def request_service_api(request, version=None):
     POST /api/1/work-categories/request-service/
 
     Headers:
-        Authorization: Bearer <jwt_token>
+        Authorization: Bearer <
+        jwt_token>
 
     Body:
         {

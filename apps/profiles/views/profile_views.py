@@ -37,7 +37,7 @@ def profile_setup_api(request, version=None):
         
         # Verification fields (optional)
         aadhaar_number: "123456789012"
-        license_number: "DL1234567890" (required for drivers)
+        license_number: "DL1234567890" (required for vehicle providers)
         license_type: "driving"
     
     Response:
@@ -375,7 +375,7 @@ def check_profile_status_api(request, version=None):
             "next_action": "proceed_to_app",
             "main_category": {
                 "code": "MS0001",
-                "name": "WORKER"
+                "name": "SKILL"
             },
             "sub_category": {
                 "code": "SS0006",

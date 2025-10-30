@@ -96,7 +96,7 @@ def validate_role_switch_data(user_profile, new_user_type, service_type=None):
         if not service_type:
             return False, "Service type is required when switching to provider role."
 
-        valid_service_types = ['worker', 'driver', 'properties', 'SOS']
+        valid_service_types = ['skill', 'vehicle', 'properties', 'SOS']
         if service_type not in valid_service_types:
             return False, f"Invalid service type. Must be one of: {', '.join(valid_service_types)}"
 

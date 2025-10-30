@@ -5,7 +5,7 @@ from apps.core.models import BaseModel, ActiveManager, work_portfolio_path, vali
 from django.core.validators import FileExtensionValidator
 
 class WorkCategory(BaseModel):
-    """Main work categories like worker, driver, business"""
+    """Main work categories like skill, vehicle, business"""
     category_code = models.CharField(max_length=10, unique=True, editable=False, null=True, blank=True)
     name = models.CharField(max_length=50, unique=True)
     display_name = models.CharField(max_length=100)
