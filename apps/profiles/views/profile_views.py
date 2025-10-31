@@ -721,41 +721,7 @@ def provider_profile_setup_api(request, version=None):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_profile_api(request, version=None):
-    """
-    Get current user's complete profile data including work history
 
-    GET /api/1/profiles/me/
-
-    Headers:
-        Authorization: Bearer <jwt_token>
-
-    Response:
-        Success (200):
-        {
-            "status": "success",
-            "message": "User details fetched successfully",
-            "data": {
-                "user_profile": {...},
-                "service_data": {...},
-                "portfolio_images": [...],
-                "verification_status": {...},
-                "wallet": {...},
-                "rating_summary": {...},
-                "service_history": {
-                    "total_service": 47,
-                    "completed_service": 42,
-                    "cancelled_service": 3,
-                    "rejected_service": 2
-                }
-            }
-        }
-
-        Not Found (404):
-        {
-            "status": "error",
-            "message": "Profile not found"
-        }
-    """
     try:
         from apps.verification.models import AadhaarVerification, LicenseVerification
         from apps.profiles.models import Wallet, ProviderRating
@@ -773,7 +739,7 @@ def get_profile_api(request, version=None):
                 "message": "Profile not found"
             }, status=status.HTTP_404_NOT_FOUND)
 
-        # Build user_profile data
+        # Build user_profile data with all fields
         user_profile_data = {
             "id": profile.id,
             "full_name": profile.full_name,
@@ -786,6 +752,12 @@ def get_profile_api(request, version=None):
             "profile_photo": request.build_absolute_uri(profile.profile_photo.url) if profile.profile_photo else None,
             "languages": [lang.strip() for lang in profile.languages.split(',') if lang.strip()] if profile.languages else [],
             "provider_id": profile.provider_id,
+            "service_coverage_area": profile.service_coverage_area,
+            "seeker_type": profile.seeker_type,
+            "business_name": profile.business_name,
+            "business_location": profile.business_location,
+            "established_date": profile.established_date.isoformat() if profile.established_date else None,
+            "website": profile.website,
             "profile_complete": profile.profile_complete,
             "can_access_app": profile.can_access_app,
             "fcm_token": profile.fcm_token,
@@ -793,6 +765,49 @@ def get_profile_api(request, version=None):
             "created_at": profile.created_at.isoformat() if profile.created_at else None,
             "updated_at": profile.updated_at.isoformat() if profile.updated_at else None
         }
+
+        # Filter fields based on user_type and seeker_type (keep current behavior)
+        if profile.user_type == 'seeker':
+            # Remove provider-specific fields
+            user_profile_data.pop('service_type', None)
+            user_profile_data.pop('provider_id', None)
+            user_profile_data.pop('service_coverage_area', None)
+            user_profile_data.pop('languages', None)
+
+            # Filter based on seeker_type
+            if profile.seeker_type == 'individual':
+                # Remove business fields for individual seekers
+                user_profile_data.pop('business_name', None)
+                user_profile_data.pop('business_location', None)
+                user_profile_data.pop('established_date', None)
+                user_profile_data.pop('website', None)
+            elif profile.seeker_type == 'business':
+                # Remove personal fields for business seekers
+                user_profile_data.pop('full_name', None)
+                user_profile_data.pop('date_of_birth', None)
+                user_profile_data.pop('gender', None)
+                user_profile_data.pop('age', None)
+
+        elif profile.user_type == 'provider':
+            # Remove seeker-specific fields
+            user_profile_data.pop('seeker_type', None)
+
+            # Determine provider type based on business_name
+            is_business_provider = bool(profile.business_name)
+
+            # Filter based on provider type
+            if not is_business_provider:
+                # Remove business fields for individual providers
+                user_profile_data.pop('business_name', None)
+                user_profile_data.pop('business_location', None)
+                user_profile_data.pop('established_date', None)
+                user_profile_data.pop('website', None)
+            else:
+                # Remove personal fields for business providers
+                user_profile_data.pop('full_name', None)
+                user_profile_data.pop('date_of_birth', None)
+                user_profile_data.pop('gender', None)
+                user_profile_data.pop('age', None)
 
         # Get service_data (category information)
         service_data = None
