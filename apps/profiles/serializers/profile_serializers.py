@@ -222,12 +222,12 @@ class SeekerProfileSetupSerializer(BaseProfileSerializer):
         allow_null=True,
         help_text="Date when business was established"
     )
-    website = serializers.URLField(
+    website = serializers.CharField(
         max_length=300,
         required=False,
         allow_blank=True,
         allow_null=True,
-        help_text="Business website (optional)"
+        help_text="Business website (optional, no validation)"
     )
 
     def to_internal_value(self, data):
