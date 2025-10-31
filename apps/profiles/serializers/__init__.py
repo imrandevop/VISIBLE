@@ -5,14 +5,19 @@ Profile serializers package.
 This module provides backward compatibility by re-exporting all serializer classes.
 """
 from .serializer_utils import FlexibleImageField, FlexibleStringField
-from .profile_serializers import ProfileSetupSerializer, ProfileResponseSerializer
+from .profile_serializers import (
+    SeekerProfileSetupSerializer,
+    ProviderProfileSetupSerializer,
+    ProfileResponseSerializer
+)
 from .wallet_serializers import WalletSerializer, WalletTransactionSerializer
 from .role_switch_serializers import RoleSwitchSerializer
 
 __all__ = [
     'FlexibleImageField',
     'FlexibleStringField',
-    'ProfileSetupSerializer',
+    'SeekerProfileSetupSerializer',
+    'ProviderProfileSetupSerializer',
     'ProfileResponseSerializer',
     'WalletSerializer',
     'WalletTransactionSerializer',
