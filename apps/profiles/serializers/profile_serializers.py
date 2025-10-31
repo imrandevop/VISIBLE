@@ -1307,7 +1307,7 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
             'id', 'full_name', 'user_type', 'service_type', 'gender', 'date_of_birth', 'age',
             'profile_photo', 'profile_complete', 'can_access_app',
             'mobile_number', 'languages', 'provider_id', 'service_coverage_area',
-            'seeker_type', 'provider_type', 'business_name', 'business_location', 'established_date', 'website',
+            'seeker_type', 'business_name', 'business_location', 'established_date', 'website',
             'portfolio_images', 'service_data',
             'created_at', 'updated_at'
         ]
@@ -1327,7 +1327,7 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
         if instance.user_type == 'seeker':
             # Remove provider-specific fields and languages (seekers don't have languages)
             provider_fields = [
-                'service_type', 'provider_id', 'provider_type', 'service_coverage_area',
+                'service_type', 'provider_id', 'service_coverage_area',
                 'portfolio_images', 'service_data', 'languages'
             ]
             for field in provider_fields:
@@ -1349,13 +1349,16 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
             # Remove seeker-specific fields
             data.pop('seeker_type', None)
 
+            # Determine provider type based on business_name (business if exists, individual if not)
+            is_business_provider = bool(instance.business_name)
+
             # Handle provider type specific fields
-            if instance.provider_type == 'individual':
+            if not is_business_provider:
                 # Remove business fields for individual providers
                 business_fields = ['business_name', 'business_location', 'established_date', 'website']
                 for field in business_fields:
                     data.pop(field, None)
-            elif instance.provider_type == 'business':
+            else:
                 # Remove personal fields for business providers (but keep profile_photo)
                 personal_fields = ['full_name', 'date_of_birth', 'gender', 'age']
                 for field in personal_fields:
