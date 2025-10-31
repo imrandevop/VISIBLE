@@ -773,6 +773,8 @@ def get_profile_api(request, version=None):
             user_profile_data.pop('provider_id', None)
             user_profile_data.pop('service_coverage_area', None)
             user_profile_data.pop('languages', None)
+            user_profile_data.pop('is_active_for_work', None)  # Not needed for seekers
+            user_profile_data.pop('fcm_token', None)  # Internal field
 
             # Filter based on seeker_type
             if profile.seeker_type == 'individual':
@@ -791,6 +793,7 @@ def get_profile_api(request, version=None):
         elif profile.user_type == 'provider':
             # Remove seeker-specific fields
             user_profile_data.pop('seeker_type', None)
+            user_profile_data.pop('fcm_token', None)  # Internal field
 
             # Determine provider type based on business_name
             is_business_provider = bool(profile.business_name)
@@ -829,11 +832,20 @@ def get_profile_api(request, version=None):
             except UserWorkSelection.DoesNotExist:
                 service_data = None
 
+        # For seekers: skip unnecessary data collection and return early
+        if profile.user_type == 'seeker':
+            return Response({
+                "status": "success",
+                "message": "User details fetched successfully",
+                "data": user_profile_data
+            }, status=status.HTTP_200_OK)
+
+        # --- PROVIDER-ONLY DATA COLLECTION BELOW ---
+
         # Get portfolio images
         portfolio_images = []
-        if profile.user_type == 'provider':
-            portfolio_imgs = profile.service_portfolio_images.all().order_by('image_order')
-            portfolio_images = [request.build_absolute_uri(img.image.url) for img in portfolio_imgs]
+        portfolio_imgs = profile.service_portfolio_images.all().order_by('image_order')
+        portfolio_images = [request.build_absolute_uri(img.image.url) for img in portfolio_imgs]
 
         # Get verification status
         verification_status = {
@@ -857,7 +869,7 @@ def get_profile_api(request, version=None):
         except LicenseVerification.DoesNotExist:
             pass
 
-        # Get wallet data (for both providers and seekers)
+        # Get wallet data
         wallet_data = None
         try:
             wallet = profile.wallet
@@ -877,34 +889,25 @@ def get_profile_api(request, version=None):
                 "currency": "INR"
             }
 
-        # Get rating summary (only for providers)
+        # Get rating summary
         rating_summary = None
-        if profile.user_type == 'provider':
-            try:
-                rating = profile.rating_summary
-                rating_summary = {
-                    "average_rating": float(rating.average_rating),
-                    "total_reviews": rating.total_reviews
-                }
-            except ProviderRating.DoesNotExist:
-                rating_summary = {
-                    "average_rating": 0.00,
-                    "total_reviews": 0
-                }
+        try:
+            rating = profile.rating_summary
+            rating_summary = {
+                "average_rating": float(rating.average_rating),
+                "total_reviews": rating.total_reviews
+            }
+        except ProviderRating.DoesNotExist:
+            rating_summary = {
+                "average_rating": 0.00,
+                "total_reviews": 0
+            }
 
         # Get service history counts
-        if profile.user_type == 'provider':
-            # For providers, count orders where they are the provider
-            total_service = WorkOrder.objects.filter(provider=user).count()
-            completed_service = WorkOrder.objects.filter(provider=user, status='completed').count()
-            cancelled_service = WorkOrder.objects.filter(provider=user, status='cancelled').count()
-            rejected_service = WorkOrder.objects.filter(provider=user, status='rejected').count()
-        else:
-            # For seekers, count orders where they are the seeker
-            total_service = WorkOrder.objects.filter(seeker=user).count()
-            completed_service = WorkOrder.objects.filter(seeker=user, status='completed').count()
-            cancelled_service = WorkOrder.objects.filter(seeker=user, status='cancelled').count()
-            rejected_service = WorkOrder.objects.filter(seeker=user, status='rejected').count()
+        total_service = WorkOrder.objects.filter(provider=user).count()
+        completed_service = WorkOrder.objects.filter(provider=user, status='completed').count()
+        cancelled_service = WorkOrder.objects.filter(provider=user, status='cancelled').count()
+        rejected_service = WorkOrder.objects.filter(provider=user, status='rejected').count()
 
         service_history = {
             "total_service": total_service,
@@ -913,7 +916,7 @@ def get_profile_api(request, version=None):
             "rejected_service": rejected_service
         }
 
-        # Build final response
+        # Build final response for providers
         response_data = {
             "user_profile": user_profile_data,
             "service_data": service_data,
