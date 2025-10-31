@@ -519,6 +519,22 @@ VISIBLE/
 | profile_complete | Boolean | Profile setup completed |
 | can_access_app | Boolean | Can access app features |
 
+**Seeker Business Profile Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| seeker_type | CharField(15) | Choices: individual/business (for seekers) |
+| business_name | CharField(200) | Business name (required for business-type seekers) |
+| business_location | CharField(300) | Business address (required for business-type) |
+| established_date | DateField | Date business was established (required for business-type) |
+| website | URLField(300) | Business website (optional) |
+
+**Provider Service Coverage:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| service_coverage_area | PositiveIntegerField | Service coverage radius in kilometers (required for providers) |
+
 **Role Switching Fields:**
 
 | Field | Type | Description |
@@ -551,43 +567,42 @@ Ensures uniqueness with retry mechanism
 - 1:N with ServicePortfolioImage (max 3)
 - 1:N with WorkOrder (as seeker or provider)
 - 1:N with ProviderReview (as provider)
-- 1:1 with DriverServiceData (if service_type=driver)
+- 1:1 with VehicleServiceData (if service_type=vehicle)
 - 1:1 with PropertyServiceData (if service_type=properties)
 - 1:1 with SOSServiceData (if service_type=SOS)
-- N:N with WorkCategory via UserWorkSelection (if service_type=worker)
+- N:N with WorkCategory via UserWorkSelection (if service_type=skill)
 
 ---
 
 ### 6.3 Service-Specific Models
 
-#### 6.3.1 DriverServiceData
-**File:** `apps/profiles/models.py:193-207`
+#### 6.3.1 VehicleServiceData
+**File:** `apps/profiles/models.py:221-237`
 
 | Field | Type | Description |
 |-------|------|-------------|
-| user | OneToOne(UserProfile) | Primary key |
+| user_profile | OneToOne(UserProfile) | Primary key |
+| vehicle_types | TextField | Comma-separated vehicle types |
 | license_number | CharField(50) | Driving license number |
-| license_expiry | Date | License expiration |
-| vehicle_type | CharField | E.g., car, bike, truck |
-| vehicle_model | CharField | Vehicle model |
-| vehicle_number | CharField | Registration number |
-| years_of_experience | Integer | Driving experience |
-| is_vehicle_owned | Boolean | Owns vehicle? |
+| vehicle_registration_number | CharField(20) | Vehicle registration number |
+| years_experience | IntegerField | Years of driving experience |
+| driving_experience_description | TextField | Description of driving experience |
+| service_offering_types | TextField | Comma-separated: rent, sale, lease, all |
 
 ---
 
 #### 6.3.2 PropertyServiceData
-**File:** `apps/profiles/models.py:210-235`
+**File:** `apps/profiles/models.py:239-266`
 
 | Field | Type | Description |
 |-------|------|-------------|
-| user | OneToOne(UserProfile) | Primary key |
-| property_type | CharField | Choices: residential/commercial/land |
-| property_size | Decimal | Size in sq ft/sq m |
-| number_of_rooms | Integer | Room count (nullable) |
-| furnishing_status | CharField | Choices: furnished/semi/unfurnished |
-| parking_available | Boolean | Parking availability |
-| location_details | TextField | Property location |
+| user_profile | OneToOne(UserProfile) | Primary key |
+| property_types | TextField | Comma-separated property types |
+| property_title | CharField(200) | Title of the property |
+| parking_availability | CharField(20) | Choices: Yes/No |
+| furnishing_type | CharField(20) | Choices: Fully Furnished/Semi Furnished/Unfurnished |
+| property_description | TextField | Description of the property |
+| service_offering_types | TextField | Comma-separated: rent, sale, lease, all |
 
 ---
 

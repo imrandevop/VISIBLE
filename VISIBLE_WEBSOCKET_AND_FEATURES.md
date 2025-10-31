@@ -199,6 +199,7 @@ Headers: Authorization: Bearer <token>
       "years_experience": 15,
       "user_type": "provider",
       "service_type": "worker",
+      "service_coverage_area": 25,
       "rating": 4.88,
       "total_reviews": "472K",
       "rating_distribution": {
@@ -301,7 +302,11 @@ Permission denied:
 4. Validates category and subcategory exist and are active
 5. Updates SeekerSearchPreference in database
 6. Queries active providers within new radius using Haversine formula
-7. Returns sorted provider list by distance (closest first)
+7. **Filters providers by BOTH:**
+   - Provider is within seeker's distance_radius
+   - **AND** Seeker is within provider's service_coverage_area
+8. Returns only providers who can actually service the seeker's location
+9. Returns sorted provider list by distance (closest first)
 
 **Backend File:** `apps/location_services/consumers/location_consumer.py`
 

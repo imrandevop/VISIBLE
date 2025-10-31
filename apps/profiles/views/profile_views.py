@@ -5,83 +5,632 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
 
-from apps.profiles.serializers import ProfileSetupSerializer, ProfileResponseSerializer, WalletSerializer, RoleSwitchSerializer
+from apps.profiles.serializers import (
+    ProfileResponseSerializer, WalletSerializer, RoleSwitchSerializer,
+    SeekerProfileSetupSerializer, ProviderProfileSetupSerializer
+)
 from apps.profiles.models import UserProfile, Wallet
 from apps.core.models import ProviderActiveStatus
 
-@api_view(['POST'])
+# ========================================================================================
+# PROFILE SETUP ENDPOINTS - SEPARATED BY USER TYPE
+# ========================================================================================
+
+@api_view(['POST', 'PATCH'])
 @permission_classes([IsAuthenticated])
-def profile_setup_api(request, version=None):
+def seeker_profile_setup_api(request, version=None):
     """
-    Complete profile setup API - handles everything in one call
-    
-    POST /api/1/profiles/setup/
-    
+    Seeker profile setup and update API
+
+    POST /api/1/profiles/seeker/setup/ - Create new seeker profile
+    PATCH /api/1/profiles/seeker/setup/ - Update existing seeker profile (partial updates supported)
+
     Headers:
         Authorization: Bearer <jwt_token>
         Content-Type: multipart/form-data
-    
-    Body (form-data):
-        user_type: "provider" or "seeker"
+
+    Body (form-data) - POST (Create Profile):
+        # Seeker type (required)
+        seeker_type: "individual" or "business"
+
+        # Individual seeker fields (required if seeker_type=individual)
         full_name: "John Doe"
         date_of_birth: "1990-01-15"
         gender: "male" or "female"
         profile_photo: <file> (optional)
-        
-        # Provider-specific fields (required if user_type=provider)
-        main_category_id: "MS0001"
-        sub_category_ids: ["SS0001", "SS0002"]
-        years_experience: 5
-        skills_description: "Expert plumber with residential experience"
-        portfolio_images: [<file1>, <file2>, <file3>] (1-3 images required)
-        
-        # Verification fields (optional)
-        aadhaar_number: "123456789012"
-        license_number: "DL1234567890" (required for vehicle providers)
-        license_type: "driving"
-    
+
+        # Business seeker fields (required if seeker_type=business)
+        business_name: "Smith Enterprises"
+        business_location: "123 Business St, Delhi"
+        established_date: "2015-06-01"
+        website: "https://smithenterprises.com" (optional)
+        profile_photo: <file> (required for business)
+
+    Body (form-data) - PATCH (Update Profile - Partial Updates Supported):
+        # Only send fields you want to update
+        full_name: "John Smith"  (update name)
+        profile_photo: <file>    (update photo)
+        # All other fields remain unchanged
+
     Response:
-        Success (200):
+        Success (200) - Individual Seeker (POST):
         {
             "status": "success",
-            "message": "Profile setup completed successfully",
+            "message": "Seeker profile created successfully",
             "profile": {
                 "id": 1,
                 "full_name": "John Doe",
-                "user_type": "provider",
+                "user_type": "seeker",
+                "seeker_type": "individual",
                 "gender": "male",
                 "date_of_birth": "1990-01-15",
                 "profile_photo": "/media/profiles/photo.jpg",
                 "profile_complete": true,
                 "can_access_app": true,
-                "main_category_id": "MS0001",
-                "sub_category_ids": ["SS0001", "SS0002"],
                 "created_at": "2025-08-15T10:30:00Z",
                 "updated_at": "2025-08-15T10:30:00Z"
             }
         }
-        
-        Error (400):
+
+        Success (200) - Business Seeker (POST):
+        {
+            "status": "success",
+            "message": "Seeker profile created successfully",
+            "profile": {
+                "id": 2,
+                "user_type": "seeker",
+                "seeker_type": "business",
+                "business_name": "Smith Enterprises",
+                "business_location": "123 Business St, Delhi",
+                "established_date": "2015-06-01",
+                "website": "https://smithenterprises.com",
+                "profile_photo": "/media/profiles/business_logo.jpg",
+                "profile_complete": true,
+                "can_access_app": true,
+                "created_at": "2025-08-15T10:30:00Z",
+                "updated_at": "2025-08-15T10:30:00Z"
+            }
+        }
+
+        Error (400) - Validation Failed:
         {
             "status": "error",
             "message": "Validation failed",
             "errors": {
-                "main_category_id": ["Invalid main category: MS9999"],
-                "portfolio_images": ["At least one portfolio image is required for providers"],
-                "sub_category_ids": ["Invalid subcategories: SS9999, SS8888"]
+                "seeker_type": ["Seeker type is required (individual or business)"],
+                "business_name": ["Business name is required for business-type seekers"],
+                "established_date": ["Established date is required for business-type seekers"]
             }
+        }
+
+        Error (400) - Profile Already Exists (POST):
+        {
+            "status": "error",
+            "message": "Profile already exists. Use PATCH method to update.",
+            "hint": "Use PATCH /api/1/profiles/seeker/setup/ to update your profile"
+        }
+
+        Error (404) - Profile Not Found (PATCH):
+        {
+            "status": "error",
+            "message": "Profile not found. Use POST method to create profile.",
+            "hint": "Use POST /api/1/profiles/seeker/setup/ to create your profile"
         }
     """
     try:
         # Handle versioning if needed
         if hasattr(request, 'version'):
             api_version = request.version
-            # Future v2 logic can go here
             if api_version == 'v2':
                 pass
 
         # Debug logging
-        print(f"PROFILE SETUP API CALLED")
+        print(f"SEEKER PROFILE SETUP API CALLED - Method: {request.method}")
+        print(f"Request data keys: {list(request.data.keys())}")
+        print(f"User: {request.user.mobile_number}")
+
+        # Method-based validation: POST = create only, PATCH = update only
+        if request.method == 'POST':
+            # POST should only create, error if profile exists
+            try:
+                existing_profile = UserProfile.objects.get(user=request.user)
+                return Response({
+                    "status": "error",
+                    "message": "Profile already exists. Use PATCH method to update.",
+                    "hint": "Use PATCH /api/1/profiles/seeker/setup/ to update your profile"
+                }, status=status.HTTP_400_BAD_REQUEST)
+            except UserProfile.DoesNotExist:
+                pass  # Good, profile doesn't exist, continue with creation
+
+        elif request.method == 'PATCH':
+            # PATCH should only update, error if profile doesn't exist
+            try:
+                existing_profile = UserProfile.objects.get(user=request.user)
+            except UserProfile.DoesNotExist:
+                return Response({
+                    "status": "error",
+                    "message": "Profile not found. Use POST method to create profile.",
+                    "hint": "Use POST /api/1/profiles/seeker/setup/ to create your profile"
+                }, status=status.HTTP_404_NOT_FOUND)
+
+        # Validate and process data using SeekerProfileSetupSerializer
+        serializer = SeekerProfileSetupSerializer(data=request.data, context={'request': request})
+
+        if serializer.is_valid():
+            try:
+                # Create profile with all related data
+                with transaction.atomic():
+                    profile = serializer.save()
+
+                # Return success response
+                response_data = ProfileResponseSerializer(profile, context={'request': request}).data
+
+                # Dynamic message based on request method
+                message = "Seeker profile created successfully" if request.method == 'POST' else "Seeker profile updated successfully"
+
+                return Response({
+                    "status": "success",
+                    "message": message,
+                    "profile": response_data
+                }, status=status.HTTP_200_OK)
+
+            except Exception as e:
+                # Always log the error to console for debugging
+                print(f"SEEKER PROFILE CREATION ERROR: {str(e)}")
+                import traceback
+                print(f"FULL TRACEBACK: {traceback.format_exc()}")
+
+                return Response({
+                    "status": "error",
+                    "message": "Failed to create seeker profile. Please try again.",
+                    "debug_error": str(e) if request.user.is_staff else None
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            # Validation errors
+            return Response({
+                "status": "error",
+                "message": "Validation failed",
+                "errors": serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        # Always log the error to console for debugging
+        print(f"OUTER EXCEPTION IN SEEKER PROFILE SETUP: {str(e)}")
+        import traceback
+        print(f"FULL TRACEBACK: {traceback.format_exc()}")
+
+        return Response({
+            "status": "error",
+            "message": "An unexpected server error occurred. Please try again.",
+            "debug_error": str(e) if request.user.is_staff else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def provider_profile_setup_api(request, version=None):
+    """
+    Provider profile setup and update API
+
+    POST /api/1/profiles/provider/setup/ - Create new provider profile
+    PATCH /api/1/profiles/provider/setup/ - Update existing provider profile (partial updates supported)
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+        Content-Type: multipart/form-data
+
+    Body (form-data) - POST (Create Profile):
+
+    INDIVIDUAL SKILL PROVIDER:
+        # Provider type (required)
+        provider_type: "individual"
+
+        # Personal fields (required for individual)
+        full_name: "Rajesh Kumar"
+        date_of_birth: "1988-08-20"
+        gender: "male"
+        profile_photo: <file> (optional)
+
+        # Service configuration
+        service_type: "skill"
+        main_category_id: "MS0001"
+        sub_category_ids: ["SS0001", "SS0002", "SS0003"]
+        service_coverage_area: 25 (in kilometers)
+        languages: ["English", "Hindi", "Telugu"]
+
+        # Skill-specific fields
+        years_experience: 5
+        description: "Expert plumber with 5 years of residential and commercial experience. Specialized in pipe fitting, leak repairs."
+
+        # Portfolio
+        portfolio_images: [<file1>, <file2>, <file3>] (1-3 images, optional)
+
+    Body (form-data) - BUSINESS SKILL PROVIDER:
+        # Provider type (required)
+        provider_type: "business"
+
+        # Business fields (required for business)
+        business_name: "Acme Corporation"
+        business_location: "New York, USA"
+        established_date: "2010-03-20"
+        website: "https://www.acme.com" (optional)
+        profile_photo: <file> (required for business)
+
+        # Service configuration
+        service_type: "skill"
+        main_category_id: "MS0001"
+        sub_category_ids: ["SS0001", "SS0002", "SS0003"]
+        service_coverage_area: 25 (in kilometers)
+        languages: ["English", "Hindi", "Telugu"]
+
+        # Skill-specific fields
+        years_experience: 5
+        description: "Expert plumber with 5 years of residential and commercial experience. Specialized in pipe fitting, leak repairs."
+
+        # Portfolio
+        portfolio_images: [<file1>, <file2>, <file3>] (1-3 images, optional)
+
+    Body (form-data) - INDIVIDUAL PROPERTY PROVIDER:
+        # Provider type (required)
+        provider_type: "individual"
+
+        # Personal fields (required for individual)
+        full_name: "John Doe"
+        date_of_birth: "1990-01-15"
+        gender: "male" or "female"
+        profile_photo: <file> (optional)
+
+        # Service configuration
+        service_type: "properties"
+        main_category_id: "MS0003"
+        sub_category_ids: ["SS0020", "SS0021"]
+        service_coverage_area: 15 (in kilometers)
+
+        # Property-specific fields
+        property_service_offering_types: ["rent", "sale"]
+        property_title: "Luxury 3BHK Apartment in Prime Location"
+        parking_availability: "Yes"
+        furnishing_type: "Fully Furnished"
+        description: "Spacious 3BHK apartment with modern amenities, 24/7 security, power backup, and excellent connectivity to metro and shopping centers."
+
+        # Portfolio
+        portfolio_images: [<property_photo1>, <property_photo2>, <property_photo3>] (1-3 images, optional)
+
+    Body (form-data) - BUSINESS PROPERTY PROVIDER:
+        # Provider type (required)
+        provider_type: "business"
+
+        # Business fields (required for business)
+        business_name: "Smith Enterprises"
+        business_location: "123 Business St, Delhi"
+        established_date: "2015-06-01"
+        website: "https://smithenterprises.com" (optional)
+        profile_photo: <file> (required for business)
+
+        # Service configuration
+        service_type: "properties"
+        main_category_id: "MS0003"
+        sub_category_ids: ["SS0020", "SS0021"]
+        service_coverage_area: 15 (in kilometers)
+
+        # Property-specific fields
+        property_service_offering_types: ["rent", "sale"]
+        property_title: "Luxury 3BHK Apartment in Prime Location"
+        parking_availability: "Yes"
+        furnishing_type: "Fully Furnished"
+        description: "Spacious 3BHK apartment with modern amenities, 24/7 security, power backup, and excellent connectivity to metro and shopping centers."
+
+        # Portfolio
+        portfolio_images: [<property_photo1>, <property_photo2>, <property_photo3>] (1-3 images, optional)
+
+    Body (form-data) - INDIVIDUAL SOS PROVIDER:
+        # Provider type (required)
+        provider_type: "individual"
+
+        # Personal fields (required for individual)
+        full_name: "John Doe"
+        date_of_birth: "1990-01-15"
+        gender: "male"
+        profile_photo: <file> (optional)
+
+        # Service configuration
+        service_type: "SOS"
+        main_category_id: "MS0004"
+        sub_category_ids: ["SS0030", "SS0031"]
+        service_coverage_area: 50 (in kilometers)
+
+        # SOS-specific fields
+        contact_number: "9876543210"
+        location: "Delhi NCR, India"
+        description: "24/7 emergency medical services available with equipped ambulance and trained medical staff. Specializing in cardiac emergencies and trauma care."
+
+        # Portfolio
+        portfolio_images: [<ambulance_photo>, <facility_photo>] (1-3 images, optional)
+
+    Body (form-data) - BUSINESS SOS PROVIDER:
+        # Provider type (required)
+        provider_type: "business"
+
+        # Business fields (required for business)
+        business_name: "Smith Enterprises"
+        business_location: "123 Business St, Delhi"
+        established_date: "2015-06-01"
+        website: "https://smithenterprises.com" (optional)
+        profile_photo: <file> (required for business)
+
+        # Service configuration
+        service_type: "SOS"
+        main_category_id: "MS0004"
+        sub_category_ids: ["SS0030", "SS0031"]
+        service_coverage_area: 50 (in kilometers)
+
+        # SOS-specific fields
+        contact_number: "9876543210"
+        location: "Delhi NCR, India"
+        description: "24/7 emergency medical services available with equipped ambulance and trained medical staff. Specializing in cardiac emergencies and trauma care."
+
+        # Portfolio
+        portfolio_images: [<ambulance_photo>, <facility_photo>] (1-3 images, optional)
+
+    Body (form-data) - PATCH (Update Profile - Partial Updates Supported):
+        # Only send fields you want to update
+        # Examples for different update scenarios:
+
+        # Update personal info (individual provider):
+        full_name: "Updated Name"
+        profile_photo: <file>
+
+        # Update business info (business provider):
+        business_name: "Updated Business Name"
+        website: "https://newwebsite.com"
+        profile_photo: <file>
+
+        # Update service details:
+        description: "Updated service description"
+        service_coverage_area: 30
+
+        # Update portfolio:
+        portfolio_images: [<new_photo1>, <new_photo2>]
+
+        # Update skill provider specific:
+        years_experience: 10
+
+        # Update property provider specific:
+        property_title: "Updated Property Title"
+        parking_availability: "Yes"
+
+        # Update SOS provider specific:
+        contact_number: "9999999999"
+        location: "New Location"
+
+        # All other fields remain unchanged
+
+    Response:
+        Success (200) - Individual Skill Provider (POST):
+        {
+            "status": "success",
+            "message": "Provider profile created successfully",
+            "profile": {
+                "id": 1,
+                "full_name": "Rajesh Kumar",
+                "user_type": "provider",
+                "provider_type": "individual",
+                "service_type": "skill",
+                "gender": "male",
+                "date_of_birth": "1988-08-20",
+                "profile_photo": "/media/profiles/photo.jpg",
+                "profile_complete": true,
+                "can_access_app": true,
+                "service_coverage_area": 25,
+                "languages": ["English", "Hindi", "Telugu"],
+                "provider_id": "PRV0001",
+                "service_data": {
+                    "main_category_id": "MS0001",
+                    "main_category_name": "SKILL",
+                    "sub_category_ids": ["SS0001", "SS0002", "SS0003"],
+                    "sub_category_names": ["Plumber", "Electrician", "Carpenter"],
+                    "years_experience": 5,
+                    "description": "Expert plumber with 5 years of residential and commercial experience. Specialized in pipe fitting, leak repairs."
+                },
+                "portfolio_images": ["/media/portfolios/img1.jpg", "/media/portfolios/img2.jpg", "/media/portfolios/img3.jpg"],
+                "created_at": "2025-08-15T10:30:00Z",
+                "updated_at": "2025-08-15T10:30:00Z"
+            }
+        }
+
+        Success (200) - Business Skill Provider (POST):
+        {
+            "status": "success",
+            "message": "Provider profile created successfully",
+            "profile": {
+                "id": 2,
+                "user_type": "provider",
+                "provider_type": "business",
+                "service_type": "skill",
+                "business_name": "Acme Corporation",
+                "business_location": "New York, USA",
+                "established_date": "2010-03-20",
+                "website": "https://www.acme.com",
+                "profile_photo": "/media/profiles/business_logo.jpg",
+                "profile_complete": true,
+                "can_access_app": true,
+                "service_coverage_area": 25,
+                "languages": ["English", "Hindi", "Telugu"],
+                "provider_id": "PRV0002",
+                "service_data": {
+                    "main_category_id": "MS0001",
+                    "main_category_name": "SKILL",
+                    "sub_category_ids": ["SS0001", "SS0002", "SS0003"],
+                    "sub_category_names": ["Plumber", "Electrician", "Carpenter"],
+                    "years_experience": 5,
+                    "description": "Expert plumber with 5 years of residential and commercial experience. Specialized in pipe fitting, leak repairs."
+                },
+                "portfolio_images": ["/media/portfolios/img1.jpg", "/media/portfolios/img2.jpg", "/media/portfolios/img3.jpg"],
+                "created_at": "2025-08-15T10:30:00Z",
+                "updated_at": "2025-08-15T10:30:00Z"
+            }
+        }
+
+        Success (200) - Individual Property Provider (POST):
+        {
+            "status": "success",
+            "message": "Provider profile created successfully",
+            "profile": {
+                "id": 1,
+                "full_name": "John Doe",
+                "user_type": "provider",
+                "provider_type": "individual",
+                "service_type": "properties",
+                "gender": "male",
+                "date_of_birth": "1990-01-15",
+                "profile_photo": "/media/profiles/photo.jpg",
+                "profile_complete": true,
+                "can_access_app": true,
+                "service_coverage_area": 15,
+                "provider_id": "PRV0001",
+                "service_data": {
+                    "main_category_id": "MS0003",
+                    "sub_category_ids": ["SS0020", "SS0021"],
+                    "property_title": "Luxury 3BHK Apartment in Prime Location",
+                    "parking_availability": "Yes",
+                    "furnishing_type": "Fully Furnished",
+                    "description": "Spacious 3BHK apartment with modern amenities, 24/7 security, power backup, and excellent connectivity to metro and shopping centers.",
+                    "service_offering_types": ["rent", "sale"]
+                },
+                "portfolio_images": ["/media/portfolios/img1.jpg", "/media/portfolios/img2.jpg", "/media/portfolios/img3.jpg"],
+                "created_at": "2025-08-15T10:30:00Z",
+                "updated_at": "2025-08-15T10:30:00Z"
+            }
+        }
+
+        Success (200) - Business Property Provider (POST):
+        {
+            "status": "success",
+            "message": "Provider profile created successfully",
+            "profile": {
+                "id": 2,
+                "user_type": "provider",
+                "provider_type": "business",
+                "service_type": "properties",
+                "business_name": "Smith Enterprises",
+                "business_location": "123 Business St, Delhi",
+                "established_date": "2015-06-01",
+                "website": "https://smithenterprises.com",
+                "profile_photo": "/media/profiles/business_logo.jpg",
+                "profile_complete": true,
+                "can_access_app": true,
+                "service_coverage_area": 15,
+                "provider_id": "PRV0002",
+                "service_data": {
+                    "main_category_id": "MS0003",
+                    "sub_category_ids": ["SS0020", "SS0021"],
+                    "property_title": "Luxury 3BHK Apartment in Prime Location",
+                    "parking_availability": "Yes",
+                    "furnishing_type": "Fully Furnished",
+                    "description": "Spacious 3BHK apartment with modern amenities, 24/7 security, power backup, and excellent connectivity to metro and shopping centers.",
+                    "service_offering_types": ["rent", "sale"]
+                },
+                "portfolio_images": ["/media/portfolios/img1.jpg", "/media/portfolios/img2.jpg", "/media/portfolios/img3.jpg"],
+                "created_at": "2025-08-15T10:30:00Z",
+                "updated_at": "2025-08-15T10:30:00Z"
+            }
+        }
+
+        Success (200) - Individual SOS Provider (POST):
+        {
+            "status": "success",
+            "message": "Provider profile created successfully",
+            "profile": {
+                "id": 3,
+                "full_name": "John Doe",
+                "user_type": "provider",
+                "provider_type": "individual",
+                "service_type": "SOS",
+                "gender": "male",
+                "date_of_birth": "1990-01-15",
+                "profile_photo": "/media/profiles/photo.jpg",
+                "profile_complete": true,
+                "can_access_app": true,
+                "service_coverage_area": 50,
+                "provider_id": "PRV0003",
+                "service_data": {
+                    "main_category_id": "MS0004",
+                    "sub_category_ids": ["SS0030", "SS0031"],
+                    "contact_number": "9876543210",
+                    "location": "Delhi NCR, India",
+                    "description": "24/7 emergency medical services available with equipped ambulance and trained medical staff. Specializing in cardiac emergencies and trauma care."
+                },
+                "portfolio_images": ["/media/portfolios/img1.jpg", "/media/portfolios/img2.jpg"],
+                "created_at": "2025-08-15T10:30:00Z",
+                "updated_at": "2025-08-15T10:30:00Z"
+            }
+        }
+
+        Success (200) - Business SOS Provider (POST):
+        {
+            "status": "success",
+            "message": "Provider profile created successfully",
+            "profile": {
+                "id": 4,
+                "user_type": "provider",
+                "provider_type": "business",
+                "service_type": "SOS",
+                "business_name": "Smith Enterprises",
+                "business_location": "123 Business St, Delhi",
+                "established_date": "2015-06-01",
+                "website": "https://smithenterprises.com",
+                "profile_photo": "/media/profiles/business_logo.jpg",
+                "profile_complete": true,
+                "can_access_app": true,
+                "service_coverage_area": 50,
+                "provider_id": "PRV0004",
+                "service_data": {
+                    "main_category_id": "MS0004",
+                    "sub_category_ids": ["SS0030", "SS0031"],
+                    "contact_number": "9876543210",
+                    "location": "Delhi NCR, India",
+                    "description": "24/7 emergency medical services available with equipped ambulance and trained medical staff. Specializing in cardiac emergencies and trauma care."
+                },
+                "portfolio_images": ["/media/portfolios/img1.jpg", "/media/portfolios/img2.jpg"],
+                "created_at": "2025-08-15T10:30:00Z",
+                "updated_at": "2025-08-15T10:30:00Z"
+            }
+        }
+
+        Error (400) - Validation Failed:
+        {
+            "status": "error",
+            "message": "Validation failed",
+            "errors": {
+                "main_category_id": ["Invalid main category: MS9999"],
+                "service_coverage_area": ["Service coverage area is required for all providers"],
+                "sub_category_ids": ["Invalid subcategories: SS9999"]
+            }
+        }
+
+        Error (400) - Profile Already Exists (POST):
+        {
+            "status": "error",
+            "message": "Profile already exists. Use PATCH method to update.",
+            "hint": "Use PATCH /api/1/profiles/provider/setup/ to update your profile"
+        }
+
+        Error (404) - Profile Not Found (PATCH):
+        {
+            "status": "error",
+            "message": "Profile not found. Use POST method to create profile.",
+            "hint": "Use POST /api/1/profiles/provider/setup/ to create your profile"
+        }
+    """
+    try:
+        # Handle versioning if needed
+        if hasattr(request, 'version'):
+            api_version = request.version
+            if api_version == 'v2':
+                pass
+
+        # Debug logging
+        print(f"PROVIDER PROFILE SETUP API CALLED - Method: {request.method}")
         print(f"Request data keys: {list(request.data.keys())}")
         print(f"User: {request.user.mobile_number}")
 
@@ -92,32 +641,60 @@ def profile_setup_api(request, version=None):
             for idx, img in enumerate(portfolio_imgs):
                 print(f"  Image {idx}: type={type(img)}, value={img if not hasattr(img, 'read') else 'FILE_OBJECT'}")
 
-        # Validate and process data
-        serializer = ProfileSetupSerializer(data=request.data, context={'request': request})
-        
+        # Method-based validation: POST = create only, PATCH = update only
+        if request.method == 'POST':
+            # POST should only create, error if profile exists
+            try:
+                existing_profile = UserProfile.objects.get(user=request.user)
+                return Response({
+                    "status": "error",
+                    "message": "Profile already exists. Use PATCH method to update.",
+                    "hint": "Use PATCH /api/1/profiles/provider/setup/ to update your profile"
+                }, status=status.HTTP_400_BAD_REQUEST)
+            except UserProfile.DoesNotExist:
+                pass  # Good, profile doesn't exist, continue with creation
+
+        elif request.method == 'PATCH':
+            # PATCH should only update, error if profile doesn't exist
+            try:
+                existing_profile = UserProfile.objects.get(user=request.user)
+            except UserProfile.DoesNotExist:
+                return Response({
+                    "status": "error",
+                    "message": "Profile not found. Use POST method to create profile.",
+                    "hint": "Use POST /api/1/profiles/provider/setup/ to create your profile"
+                }, status=status.HTTP_404_NOT_FOUND)
+
+        # Validate and process data using ProviderProfileSetupSerializer
+        serializer = ProviderProfileSetupSerializer(data=request.data, context={'request': request})
+
         if serializer.is_valid():
             try:
                 # Create profile with all related data
                 with transaction.atomic():
                     profile = serializer.save()
-                
+
                 # Return success response
                 response_data = ProfileResponseSerializer(profile, context={'request': request}).data
+
+                # Dynamic message based on request method
+                message = "Provider profile created successfully" if request.method == 'POST' else "Provider profile updated successfully"
+
                 return Response({
                     "status": "success",
-                    "message": "Profile setup completed successfully",
+                    "message": message,
                     "profile": response_data
                 }, status=status.HTTP_200_OK)
-                
+
             except Exception as e:
                 # Always log the error to console for debugging
-                print(f"PROFILE CREATION ERROR: {str(e)}")
+                print(f"PROVIDER PROFILE CREATION ERROR: {str(e)}")
                 import traceback
                 print(f"FULL TRACEBACK: {traceback.format_exc()}")
 
                 return Response({
                     "status": "error",
-                    "message": "Failed to create profile. Please try again.",
+                    "message": "Failed to create provider profile. Please try again.",
                     "debug_error": str(e) if request.user.is_staff else None
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         else:
@@ -127,10 +704,10 @@ def profile_setup_api(request, version=None):
                 "message": "Validation failed",
                 "errors": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
-            
+
     except Exception as e:
         # Always log the error to console for debugging
-        print(f"OUTER EXCEPTION IN PROFILE SETUP: {str(e)}")
+        print(f"OUTER EXCEPTION IN PROVIDER PROFILE SETUP: {str(e)}")
         import traceback
         print(f"FULL TRACEBACK: {traceback.format_exc()}")
 

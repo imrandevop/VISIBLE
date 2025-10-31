@@ -221,46 +221,107 @@ All responses follow this structure:
 **Base Path:** `/api/1/profiles/`
 **File:** `apps/profiles/urls.py`
 
-### 3.1 Setup Profile
+### 3.1 Seeker Profile Setup
 
-**Endpoint:** `POST /api/1/profiles/setup/`
+**Endpoint:** `POST /api/1/profiles/seeker/setup/`
 **Authentication:** Required
 **File:** `apps/profiles/views/profile_views.py`
-**Serializer:** `apps/profiles/serializers/profile_serializers.py`
+**Serializer:** `SeekerProfileSetupSerializer`
 
-#### For Seeker
-
-**Request Body:**
+**Request Body (Individual Seeker):**
 ```json
 {
   "full_name": "John Doe",
   "date_of_birth": "1990-05-15",
   "gender": "male",
-  "profile_photo": "<file_upload_or_url>"
+  "profile_photo": "<file_upload_or_url>",
+  "languages": ["English", "Hindi"]
 }
 ```
 
-**Response (200):**
+**Request Body (Business Seeker):**
+```json
+{
+  "seeker_type": "business",
+  "full_name": "John Doe",
+  "date_of_birth": "1990-05-15",
+  "gender": "male",
+  "profile_photo": "<file_upload_or_url>",
+  "languages": ["English", "Hindi"],
+  "business_name": "Doe Enterprises",
+  "business_location": "123 Business Street, City",
+  "established_date": "2015-06-20",
+  "website": "https://www.doeenterprises.com"
+}
+```
+
+**Required Fields for Business Seekers:**
+- `seeker_type` - Set to "business"
+- `business_name` - Business name (required)
+- `business_location` - Business address (required)
+- `established_date` - Date business was established (required)
+- `website` - Business website (optional)
+
+**Response (200) - Individual Seeker:**
 ```json
 {
   "status": "success",
-  "message": "Profile setup completed successfully",
-  "data": {
+  "message": "Seeker profile setup completed successfully",
+  "profile": {
     "id": 123,
     "full_name": "John Doe",
-    "date_of_birth": "1990-05-15",
-    "gender": "male",
-    "profile_photo": "https://.../photo.jpg",
     "user_type": "seeker",
+    "seeker_type": "individual",
+    "gender": "male",
+    "date_of_birth": "1990-05-15",
+    "age": 35,
+    "profile_photo": "https://.../photo.jpg",
+    "languages": ["English", "Hindi"],
     "profile_complete": true,
     "can_access_app": true,
     "mobile_number": "9876543210",
-    "created_at": "2025-10-23T10:30:00Z"
+    "created_at": "2025-10-30T10:30:00Z",
+    "updated_at": "2025-10-30T10:30:00Z"
   }
 }
 ```
 
-#### For Provider
+**Response (200) - Business Seeker:**
+```json
+{
+  "status": "success",
+  "message": "Seeker profile setup completed successfully",
+  "profile": {
+    "id": 124,
+    "full_name": "John Doe",
+    "user_type": "seeker",
+    "seeker_type": "business",
+    "gender": "male",
+    "date_of_birth": "1990-05-15",
+    "age": 35,
+    "profile_photo": "https://.../photo.jpg",
+    "languages": ["English", "Hindi"],
+    "business_name": "Doe Enterprises",
+    "business_location": "123 Business Street, City",
+    "established_date": "2015-06-20",
+    "website": "https://www.doeenterprises.com",
+    "profile_complete": true,
+    "can_access_app": true,
+    "mobile_number": "9876543210",
+    "created_at": "2025-10-30T10:30:00Z",
+    "updated_at": "2025-10-30T10:30:00Z"
+  }
+}
+```
+
+---
+
+### 3.2 Provider Profile Setup
+
+**Endpoint:** `POST /api/1/profiles/provider/setup/`
+**Authentication:** Required
+**File:** `apps/profiles/views/profile_views.py`
+**Serializer:** `ProviderProfileSetupSerializer`
 
 **Request Body:**
 ```json
@@ -269,99 +330,134 @@ All responses follow this structure:
   "date_of_birth": "1988-08-20",
   "gender": "female",
   "profile_photo": "<file_upload_or_url>",
-  "service_type": "worker",
-  "main_category_id": 1,
-  "sub_category_ids": [1, 2, 3],
+  "languages": ["English", "Hindi"],
+  "service_type": "skill",
+  "service_coverage_area": 25,
+  "main_category_id": "MS0001",
+  "sub_category_ids": ["SS0001", "SS0002", "SS0003"],
+  "years_experience": 5,
+  "skills": "Expert in plumbing work with 5 years experience",
   "portfolio_images": [
-    {"image": "<file_upload_or_url>", "caption": "Work sample 1"},
-    {"image": "<file_upload_or_url>", "caption": "Work sample 2"}
+    "<file_upload_or_url>",
+    "<file_upload_or_url>"
   ]
 }
 ```
 
-**Required Fields for Provider:**
-- `service_type` - worker/driver/properties/SOS
-- `main_category_id` - Main service category
-- `sub_category_ids` - Array of subcategory IDs
-- `portfolio_images` - 1 to 3 images (minimum 1 required)
+**Required Fields for All Providers:**
+- `service_type` - skill/vehicle/properties/SOS
+- `service_coverage_area` - Service coverage radius in kilometers (required)
+- `main_category_id` - Main service category code (e.g., "MS0001")
+- `sub_category_ids` - Array of subcategory codes (e.g., ["SS0001", "SS0002"])
+- `portfolio_images` - 1 to 3 images (minimum 1 recommended)
 
 **Service-Specific Additional Fields:**
 
-**For Driver (service_type=driver):**
+**For Vehicle (service_type=vehicle):**
 ```json
 {
-  "service_data": {
-    "license_number": "DL1234567890",
-    "license_expiry": "2028-12-31",
-    "vehicle_type": "car",
-    "vehicle_model": "Honda City",
-    "vehicle_number": "DL01AB1234",
-    "years_of_experience": 5,
-    "is_vehicle_owned": true
-  }
+  "service_type": "vehicle",
+  "service_coverage_area": 30,
+  "main_category_id": "MS0002",
+  "sub_category_ids": ["SS0010", "SS0011"],
+  "years_experience": 5,
+  "vehicle_types": ["Car", "SUV"],
+  "license_number": "DL1234567890",
+  "vehicle_registration_number": "DL01AB1234",
+  "driving_experience_description": "5 years professional driving experience",
+  "vehicle_service_offering_types": ["rent", "lease"]
 }
 ```
+
+**Required Fields for Vehicle Providers:**
+- `vehicle_types` - Array of vehicle types
+- `license_number` - Driving license number
+- `vehicle_registration_number` - Vehicle registration number
+- `years_experience` - Years of driving experience
+- `driving_experience_description` - Description of experience
+- `vehicle_service_offering_types` - Array: ["rent", "sale", "lease", "all"]
 
 **For Properties (service_type=properties):**
 ```json
 {
-  "service_data": {
-    "property_type": "residential",
-    "property_size": 1200.50,
-    "number_of_rooms": 3,
-    "furnishing_status": "furnished",
-    "parking_available": true,
-    "location_details": "Near Metro Station, Sector 18"
-  }
+  "service_type": "properties",
+  "service_coverage_area": 15,
+  "main_category_id": "MS0003",
+  "sub_category_ids": ["SS0020"],
+  "years_experience": 3,
+  "property_types": ["Apartment", "Villa"],
+  "property_title": "Luxury 3BHK Apartment",
+  "property_description": "Spacious apartment with modern amenities",
+  "parking_availability": "Yes",
+  "furnishing_type": "Fully Furnished",
+  "property_service_offering_types": ["rent", "sale"]
 }
 ```
+
+**Required Fields for Property Providers:**
+- `property_types` - Array of property types
+- `property_title` - Property title
+- `property_description` - Description of the property
+- `property_service_offering_types` - Array: ["rent", "sale", "lease", "all"]
+- `parking_availability` - Optional: "Yes" or "No"
+- `furnishing_type` - Optional: "Fully Furnished", "Semi Furnished", "Unfurnished"
 
 **For SOS (service_type=SOS):**
 ```json
 {
-  "service_data": {
-    "emergency_service_type": "Medical Emergency",
-    "emergency_contact": "9876543210",
-    "service_location": "Delhi NCR",
-    "available_24x7": true
-  }
+  "service_type": "SOS",
+  "service_coverage_area": 50,
+  "main_category_id": "MS0004",
+  "sub_category_ids": ["SS0030"],
+  "years_experience": 10,
+  "skills": "Emergency medical services provider",
+  "emergency_service_types": ["Medical Emergency", "Ambulance"],
+  "contact_number": "9876543210",
+  "current_location": "Delhi NCR",
+  "emergency_description": "24/7 emergency medical services available"
 }
 ```
+
+**Required Fields for SOS Providers:**
+- `emergency_service_types` - Array of emergency service types
+- `contact_number` - Emergency contact number
+- `current_location` - Current service location
+- `emergency_description` - Description of emergency services
 
 **Response (200):**
 ```json
 {
   "status": "success",
   "message": "Provider profile setup completed successfully",
-  "data": {
+  "profile": {
     "id": 124,
     "full_name": "Jane Smith",
     "user_type": "provider",
-    "service_type": "worker",
+    "service_type": "skill",
+    "gender": "female",
+    "date_of_birth": "1988-08-20",
+    "age": 37,
+    "profile_photo": "https://.../photo.jpg",
+    "languages": ["English", "Hindi"],
+    "service_coverage_area": 25,
     "provider_id": "AB87654321",
     "profile_complete": true,
     "can_access_app": true,
-    "wallet": {
-      "balance": "0.00",
-      "currency": "INR"
-    },
-    "main_category": {
-      "id": 1,
-      "name": "Plumber",
-      "code": "MS0001"
-    },
-    "sub_categories": [
-      {"id": 1, "name": "Pipe Fitting", "code": "SS0001"},
-      {"id": 2, "name": "Leak Repair", "code": "SS0002"}
-    ],
+    "mobile_number": "9876543210",
     "portfolio_images": [
-      {
-        "id": 1,
-        "image": "https://.../portfolio1.jpg",
-        "caption": "Work sample 1",
-        "uploaded_at": "2025-10-23T10:35:00Z"
-      }
-    ]
+      "https://.../portfolio1.jpg",
+      "https://.../portfolio2.jpg"
+    ],
+    "service_data": {
+      "main_category_id": "MS0001",
+      "main_category_name": "Plumber",
+      "sub_category_ids": ["SS0001", "SS0002", "SS0003"],
+      "sub_category_names": ["Pipe Fitting", "Leak Repair", "Bathroom Installation"],
+      "years_experience": 5,
+      "skills": "Expert in plumbing work with 5 years experience"
+    },
+    "created_at": "2025-10-30T10:35:00Z",
+    "updated_at": "2025-10-30T10:35:00Z"
   }
 }
 ```
@@ -377,6 +473,204 @@ All responses follow this structure:
 - Image formats: jpg, jpeg, png
 - Date of birth: Must be at least 18 years old
 - Profile photo: Optional but recommended
+
+---
+
+### 3.1.1 Separated Profile Setup Endpoints (New)
+
+**NEW:** As of October 2025, we've introduced separated endpoints for better code maintainability and clearer API structure. These endpoints provide the same functionality as the unified `/setup/` endpoint but are specifically tailored for seeker and provider profiles.
+
+#### Seeker Profile Setup
+
+**Endpoint:** `POST /api/1/profiles/seeker/setup/`
+**Authentication:** Required
+**File:** `apps/profiles/views/profile_views.py`
+**Serializer:** `apps/profiles/serializers/profile_serializers.py` - `SeekerProfileSetupSerializer`
+
+**Request Body (Individual Seeker):**
+```json
+{
+  "full_name": "John Doe",
+  "date_of_birth": "1990-05-15",
+  "gender": "male",
+  "profile_photo": "<file_upload_or_url>",
+  "languages": ["English", "Hindi"]
+}
+```
+
+**Request Body (Business Seeker):**
+```json
+{
+  "seeker_type": "business",
+  "full_name": "John Doe",
+  "date_of_birth": "1990-05-15",
+  "gender": "male",
+  "profile_photo": "<file_upload_or_url>",
+  "languages": ["English", "Hindi"],
+  "business_name": "Doe Enterprises",
+  "business_location": "123 Business Street, City",
+  "established_date": "2015-06-20",
+  "website": "https://www.doeenterprises.com"
+}
+```
+
+**Key Differences from Unified Endpoint:**
+- No need to specify `user_type` - automatically set to "seeker"
+- Clearer validation errors specific to seeker profiles
+- Only seeker-related fields are accepted
+
+**Response (200):**
+```json
+{
+  "status": "success",
+  "message": "Seeker profile setup completed successfully",
+  "profile": {
+    "id": 123,
+    "full_name": "John Doe",
+    "user_type": "seeker",
+    "seeker_type": "individual",
+    "gender": "male",
+    "date_of_birth": "1990-05-15",
+    "profile_photo": "https://.../photo.jpg",
+    "languages": ["English", "Hindi"],
+    "profile_complete": true,
+    "can_access_app": true,
+    "mobile_number": "9876543210",
+    "created_at": "2025-10-30T10:30:00Z",
+    "updated_at": "2025-10-30T10:30:00Z"
+  }
+}
+```
+
+#### Provider Profile Setup
+
+**Endpoint:** `POST /api/1/profiles/provider/setup/`
+**Authentication:** Required
+**File:** `apps/profiles/views/profile_views.py`
+**Serializer:** `apps/profiles/serializers/profile_serializers.py` - `ProviderProfileSetupSerializer`
+
+**Request Body (Skill Provider):**
+```json
+{
+  "full_name": "Jane Smith",
+  "date_of_birth": "1988-08-20",
+  "gender": "female",
+  "profile_photo": "<file_upload_or_url>",
+  "languages": ["English", "Hindi"],
+  "service_type": "skill",
+  "service_coverage_area": 25,
+  "main_category_id": "MS0001",
+  "sub_category_ids": ["SS0001", "SS0002"],
+  "years_experience": 5,
+  "skills": "Expert in plumbing work",
+  "portfolio_images": ["<file1>", "<file2>"]
+}
+```
+
+**Key Differences from Unified Endpoint:**
+- No need to specify `user_type` - automatically set to "provider"
+- Clearer validation errors specific to provider profiles
+- Only provider-related fields are accepted
+- Better error messages for service-specific validations
+
+**Response (200):**
+```json
+{
+  "status": "success",
+  "message": "Provider profile setup completed successfully",
+  "profile": {
+    "id": 124,
+    "full_name": "Jane Smith",
+    "user_type": "provider",
+    "service_type": "skill",
+    "gender": "female",
+    "date_of_birth": "1988-08-20",
+    "profile_photo": "https://.../photo.jpg",
+    "languages": ["English", "Hindi"],
+    "service_coverage_area": 25,
+    "provider_id": "AB87654321",
+    "profile_complete": true,
+    "can_access_app": true,
+    "service_data": {
+      "main_category_id": "MS0001",
+      "main_category_name": "Plumber",
+      "sub_category_ids": ["SS0001", "SS0002"],
+      "sub_category_names": ["Pipe Fitting", "Leak Repair"],
+      "years_experience": 5,
+      "skills": "Expert in plumbing work"
+    },
+    "portfolio_images": [
+      "https://.../portfolio1.jpg",
+      "https://.../portfolio2.jpg"
+    ],
+    "mobile_number": "9876543210",
+    "created_at": "2025-10-30T10:30:00Z",
+    "updated_at": "2025-10-30T10:30:00Z"
+  }
+}
+```
+
+#### Migration Guide
+
+**For Mobile/Frontend Developers:**
+
+**Option 1: Immediate Migration (Recommended)**
+Update your app to use the new separated endpoints based on user type selection:
+
+```dart
+// Old code
+final response = await http.post(
+  'https://api.visibleapp.in/api/1/profiles/setup/',
+  body: {
+    'user_type': userType,  // 'seeker' or 'provider'
+    ...otherFields
+  }
+);
+
+// New code
+final endpoint = userType == 'seeker'
+  ? 'https://api.visibleapp.in/api/1/profiles/seeker/setup/'
+  : 'https://api.visibleapp.in/api/1/profiles/provider/setup/';
+
+final response = await http.post(
+  endpoint,
+  body: {
+    // No need to send user_type
+    ...otherFields
+  }
+);
+```
+
+**Option 2: No Changes Required**
+The original unified endpoint `/api/1/profiles/setup/` is still available and fully functional. You can continue using it without any code changes.
+
+**Benefits of Migration:**
+1. ✅ **Clearer Errors** - Validation errors are more specific and easier to debug
+2. ✅ **Better Documentation** - Each endpoint has focused documentation
+3. ✅ **Type Safety** - No risk of sending provider fields to seeker endpoint
+4. ✅ **Future Proof** - Easier to add new features specific to each user type
+5. ✅ **Better Performance** - Smaller serializers mean faster validation
+
+**Backward Compatibility:**
+- The unified `/api/1/profiles/setup/` endpoint remains fully supported
+- All existing mobile apps will continue to work without any changes
+- No breaking changes to response structure
+- Same authentication and validation rules apply
+
+**When to Use Which Endpoint:**
+
+| Scenario | Recommended Endpoint |
+|----------|---------------------|
+| New app development | Use separated endpoints (`/seeker/setup/` or `/provider/setup/`) |
+| Existing app (can update) | Migrate to separated endpoints for better maintainability |
+| Existing app (cannot update immediately) | Continue using unified `/setup/` endpoint |
+| Backend/Admin tools | Use separated endpoints for clarity |
+
+**Important Notes:**
+- Profile updates work the same way - just POST with updated fields
+- Both create and update operations use the same endpoint (no separate PUT/PATCH)
+- The `user_type` field is automatically set and cannot be changed via these endpoints
+- For role switching (seeker ↔ provider), use the `/switch-role/` endpoint
 
 ---
 
@@ -397,8 +691,14 @@ All responses follow this structure:
     "gender": "female",
     "profile_photo": "https://.../photo.jpg",
     "user_type": "provider",
-    "service_type": "worker",
+    "service_type": "skill",
+    "service_coverage_area": 25,
     "provider_id": "AB87654321",
+    "seeker_type": null,
+    "business_name": null,
+    "business_location": null,
+    "established_date": null,
+    "website": null,
     "profile_complete": true,
     "can_access_app": true,
     "mobile_number": "9876543210",
@@ -1041,6 +1341,13 @@ All responses follow this structure:
 - Default: 5 km
 - Can be customized by seeker
 - Used for provider matching
+
+**Provider Filtering Logic:**
+Providers are shown to seekers only if:
+1. Provider is within seeker's search radius (distance_radius)
+2. **AND** Seeker is within provider's service coverage area (service_coverage_area)
+
+This ensures that only providers who can actually service the seeker's location are displayed.
 
 ---
 

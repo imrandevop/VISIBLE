@@ -7,8 +7,9 @@ from apps.profiles import work_assignment_views
 app_name = 'profiles'
 
 urlpatterns = [
-    # Profile setup endpoints
-    path('setup/', views.profile_setup_api, name='profile_setup'),
+    # Profile setup endpoints - Separated by user type
+    path('seeker/setup/', views.seeker_profile_setup_api, name='seeker_profile_setup'),
+    path('provider/setup/', views.provider_profile_setup_api, name='provider_profile_setup'),
     path('me/', views.get_profile_api, name='get_profile'),
     path('status/', views.check_profile_status_api, name='profile_status'),
 
