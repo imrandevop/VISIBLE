@@ -60,7 +60,7 @@ class UserProfile(BaseModel):
     business_name = models.CharField(max_length=200, null=True, blank=True, help_text="Business name for business-type seekers")
     business_location = models.CharField(max_length=300, null=True, blank=True, help_text="Business location/address")
     established_date = models.DateField(null=True, blank=True, help_text="Date when business was established")
-    website = models.URLField(max_length=300, null=True, blank=True, help_text="Business website (optional)")
+    website = models.CharField(max_length=300, null=True, blank=True, help_text="Business website (optional, no validation)")
 
     # Provider service coverage area
     service_coverage_area = models.PositiveIntegerField(null=True, blank=True, help_text="Service coverage area in kilometers (how far the provider can travel)")
