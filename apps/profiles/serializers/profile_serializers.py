@@ -429,10 +429,13 @@ class SeekerProfileSetupSerializer(BaseProfileSerializer):
             elif existing_profile and existing_profile.profile_photo:
                 defaults['profile_photo'] = existing_profile.profile_photo
 
-            # Clear personal fields for business seekers
-            defaults['full_name'] = None
-            defaults['date_of_birth'] = None
-            defaults['gender'] = None
+            # Map business fields to personal fields (required for DB constraints)
+            # Use business_name as full_name
+            defaults['full_name'] = defaults.get('business_name', existing_profile.business_name if existing_profile else 'Business User')
+            # Use established_date as date_of_birth
+            defaults['date_of_birth'] = defaults.get('established_date', existing_profile.established_date if existing_profile else None)
+            # Set gender to 'male' as placeholder (not applicable for business)
+            defaults['gender'] = 'male'
 
         defaults['profile_complete'] = False
         defaults['can_access_app'] = False
@@ -1046,10 +1049,13 @@ class ProviderProfileSetupSerializer(BaseProfileSerializer):
             elif existing_profile and existing_profile.profile_photo:
                 defaults['profile_photo'] = existing_profile.profile_photo
 
-            # Clear personal fields for business providers
-            defaults['full_name'] = None
-            defaults['date_of_birth'] = None
-            defaults['gender'] = None
+            # Map business fields to personal fields (required for DB constraints)
+            # Use business_name as full_name
+            defaults['full_name'] = defaults.get('business_name', existing_profile.business_name if existing_profile else 'Business User')
+            # Use established_date as date_of_birth
+            defaults['date_of_birth'] = defaults.get('established_date', existing_profile.established_date if existing_profile else None)
+            # Set gender to 'male' as placeholder (not applicable for business)
+            defaults['gender'] = 'male'
 
         # Handle languages (providers have languages)
         defaults['languages'] = self._handle_languages(validated_data, existing_profile)
