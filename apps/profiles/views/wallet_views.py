@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
 
-from apps.profiles.serializers import ProfileSetupSerializer, ProfileResponseSerializer, WalletSerializer, RoleSwitchSerializer
+from apps.profiles.serializers import WalletSerializer, RoleSwitchSerializer
 from apps.profiles.models import UserProfile, Wallet
 from apps.core.models import ProviderActiveStatus
 
