@@ -292,7 +292,7 @@ def provider_profile_setup_api(request, version=None):
         vehicle_registration_number: "DL01AB1234" (optional)
         years_experience: 8 (required)
         driving_experience_description: "8 years professional driving experience with corporate clients, airport transfers, and outstation trips. Clean driving record." (required)
-        vehicle_service_offering_types: ["rent", "lease"] (required)
+        vehicle_service_offering_types: ["For Rent", "Lease"] (required - options: All, For Sale, For Rent, Driver Service, Exchange, Lease, Delivery Service)
 
         # Portfolio
         portfolio_images: [<vehicle_photo1>, <vehicle_photo2>] (1-3 images, optional)
@@ -320,7 +320,7 @@ def provider_profile_setup_api(request, version=None):
         vehicle_registration_number: "DL01XY9999" (optional)
         years_experience: 12 (required)
         driving_experience_description: "12 years in vehicle rental business. Fleet of 20+ vehicles with professional drivers. Corporate tie-ups and airport services." (required)
-        vehicle_service_offering_types: ["rent", "lease", "sale"] (required)
+        vehicle_service_offering_types: ["For Rent", "Lease", "For Sale"] (required - options: All, For Sale, For Rent, Driver Service, Exchange, Lease, Delivery Service)
 
         # Portfolio
         portfolio_images: [<fleet_photo1>, <fleet_photo2>, <office_photo>] (1-3 images, optional)
@@ -342,7 +342,7 @@ def provider_profile_setup_api(request, version=None):
         service_coverage_area: 15 (in kilometers)
 
         # Property-specific fields
-        property_service_offering_types: ["rent", "sale"]
+        property_service_offering_types: ["For Rent", "For Sale"] (required - options: All, For Rent, For Sale, Lease, Accommodation, Hospitality, Lodge)
         property_title: "Luxury 3BHK Apartment in Prime Location"
         parking_availability: "Yes"
         furnishing_type: "Fully Furnished"
@@ -369,7 +369,7 @@ def provider_profile_setup_api(request, version=None):
         service_coverage_area: 15 (in kilometers)
 
         # Property-specific fields
-        property_service_offering_types: ["rent", "sale"]
+        property_service_offering_types: ["For Rent", "For Sale"] (required - options: All, For Rent, For Sale, Lease, Accommodation, Hospitality, Lodge)
         property_title: "Luxury 3BHK Apartment in Prime Location"
         parking_availability: "Yes"
         furnishing_type: "Fully Furnished"

@@ -543,7 +543,7 @@ class ProviderProfileSetupSerializer(BaseProfileSerializer):
         child=serializers.CharField(),
         required=False,
         allow_empty=True,
-        help_text="Service offering types for vehicles (rent, sale, lease, all)"
+        help_text="Service offering types for vehicles (All, For Sale, For Rent, Driver Service, Exchange, Lease, Delivery Service)"
     )
 
     # Property-specific Fields
@@ -564,7 +564,7 @@ class ProviderProfileSetupSerializer(BaseProfileSerializer):
         child=serializers.CharField(),
         required=False,
         allow_empty=True,
-        help_text="Service offering types for properties (rent, sale)"
+        help_text="Service offering types for properties (All, For Rent, For Sale, Lease, Accommodation, Hospitality, Lodge)"
     )
 
     # SOS/Emergency-specific Fields
@@ -898,7 +898,7 @@ class ProviderProfileSetupSerializer(BaseProfileSerializer):
             required_fields = {
                 'years_experience': 'Years of experience is required for vehicle providers',
                 'description': 'Description is required for vehicle providers',
-                'vehicle_service_offering_types': 'Service offering types are required for vehicle providers (rent, sale, lease, or all)'
+                'vehicle_service_offering_types': 'Service offering types are required for vehicle providers (All, For Sale, For Rent, Driver Service, Exchange, Lease, Delivery Service)'
             }
 
             for field, message in required_fields.items():
@@ -908,11 +908,11 @@ class ProviderProfileSetupSerializer(BaseProfileSerializer):
         # Validate service_offering_types values
         vehicle_service_offering_types = attrs.get('vehicle_service_offering_types', [])
         if vehicle_service_offering_types:
-            valid_types = ['rent', 'sale', 'lease', 'all']
+            valid_types = ['all', 'for sale', 'for rent', 'driver service', 'exchange', 'lease', 'delivery service']
             invalid_types = [t for t in vehicle_service_offering_types if t.lower() not in valid_types]
             if invalid_types:
                 raise serializers.ValidationError({
-                    'vehicle_service_offering_types': f'Invalid service offering types: {", ".join(invalid_types)}. Valid options are: rent, sale, lease, all'
+                    'vehicle_service_offering_types': f'Invalid service offering types: {", ".join(invalid_types)}. Valid options are: All, For Sale, For Rent, Driver Service, Exchange, Lease, Delivery Service'
                 })
 
     def _validate_property_fields(self, attrs, is_required=True):
@@ -921,7 +921,7 @@ class ProviderProfileSetupSerializer(BaseProfileSerializer):
             required_fields = {
                 'property_title': 'Property title is required for property services',
                 'description': 'Description is required for property services',
-                'property_service_offering_types': 'Service offering types are required for property providers (rent or sale)'
+                'property_service_offering_types': 'Service offering types are required for property providers (All, For Rent, For Sale, Lease, Accommodation, Hospitality, Lodge)'
             }
 
             for field, message in required_fields.items():
@@ -931,11 +931,11 @@ class ProviderProfileSetupSerializer(BaseProfileSerializer):
         # Validate service_offering_types values
         property_service_offering_types = attrs.get('property_service_offering_types', [])
         if property_service_offering_types:
-            valid_types = ['rent', 'sale']
+            valid_types = ['all', 'for rent', 'for sale', 'lease', 'accommodation', 'hospitality', 'lodge']
             invalid_types = [t for t in property_service_offering_types if t.lower() not in valid_types]
             if invalid_types:
                 raise serializers.ValidationError({
-                    'property_service_offering_types': f'Invalid service offering types: {", ".join(invalid_types)}. Valid options are: rent, sale'
+                    'property_service_offering_types': f'Invalid service offering types: {", ".join(invalid_types)}. Valid options are: All, For Rent, For Sale, Lease, Accommodation, Hospitality, Lodge'
                 })
 
     def _validate_sos_fields(self, attrs, is_required=True):
