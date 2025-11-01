@@ -720,8 +720,9 @@ class ProviderProfileSetupSerializer(BaseProfileSerializer):
 
         # Get provider_type and service_type
         provider_type = attrs.get('provider_type')
+        # For existing profiles, determine provider_type from business_name
         if not provider_type and existing_profile:
-            provider_type = existing_profile.provider_type
+            provider_type = 'business' if existing_profile.business_name else 'individual'
 
         service_type = attrs.get('service_type')
         if not service_type and existing_profile:
@@ -967,23 +968,14 @@ class ProviderProfileSetupSerializer(BaseProfileSerializer):
 
         # Get provider_type and service_type
         provider_type = validated_data.get('provider_type')
-        if not provider_type and existing_profile:
-            provider_type = existing_profile.provider_type
-
         service_type = validated_data.get('service_type')
         if not service_type and existing_profile:
             service_type = existing_profile.service_type
 
-        # Build defaults dict differently based on provider_type
+        # Build defaults dict
         defaults = {}
         defaults['user_type'] = 'provider'
         defaults['service_type'] = service_type
-
-        # Set provider_type
-        if 'provider_type' in validated_data:
-            defaults['provider_type'] = validated_data['provider_type']
-        elif existing_profile:
-            defaults['provider_type'] = existing_profile.provider_type
 
         # Handle fields based on provider_type
         if provider_type == 'individual':
