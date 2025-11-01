@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from django.db import transaction
+from django.db import transaction, models
 from django.utils import timezone
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -342,20 +342,40 @@ def build_complete_seeker_data(seeker_profile):
         if seeker_profile.languages:
             languages = [lang.strip() for lang in seeker_profile.languages.split(',') if lang.strip()]
 
-        return {
+        # Determine seeker type
+        is_business = bool(seeker_profile.business_name)
+
+        # Build seeker data
+        seeker_data = {
             'user_id': seeker_profile.user.id,
-            'name': seeker_profile.full_name,
             'mobile_number': seeker_profile.user.mobile_number if seeker_profile.user else '',
-            'age': seeker_profile.age,
-            'gender': seeker_profile.gender,
-            'date_of_birth': seeker_profile.date_of_birth.isoformat() if seeker_profile.date_of_birth else None,
+            'user_type': seeker_profile.user_type,
+            'seeker_type': 'business' if is_business else 'individual',
             'profile_photo': profile_photo,
             'languages': languages,
-            'user_type': seeker_profile.user_type,
             'profile_complete': seeker_profile.profile_complete,
             'can_access_app': seeker_profile.can_access_app,
             'created_at': seeker_profile.created_at.isoformat() if seeker_profile.created_at else None
         }
+
+        # Add individual-specific fields
+        if not is_business:
+            seeker_data.update({
+                'full_name': seeker_profile.full_name,
+                'gender': seeker_profile.gender,
+                'date_of_birth': seeker_profile.date_of_birth.isoformat() if seeker_profile.date_of_birth else None,
+                'age': seeker_profile.age
+            })
+        else:
+            # Add business-specific fields
+            seeker_data.update({
+                'business_name': seeker_profile.business_name,
+                'business_location': seeker_profile.business_location,
+                'established_date': seeker_profile.established_date.isoformat() if seeker_profile.established_date else None,
+                'website': seeker_profile.website
+            })
+
+        return seeker_data
     except Exception as e:
         logger.error(f"Error building seeker data: {str(e)}")
         return {
@@ -365,6 +385,201 @@ def build_complete_seeker_data(seeker_profile):
             'profile_photo': None,
             'languages': [],
             'user_type': getattr(seeker_profile, 'user_type', 'seeker')
+        }
+
+
+def build_complete_provider_data(provider_profile):
+    """Build complete provider profile data"""
+    try:
+        from django.conf import settings
+        from apps.profiles.work_assignment_models import WorkOrder
+
+        # Determine base URL for images
+        if hasattr(settings, 'ALLOWED_HOSTS') and settings.ALLOWED_HOSTS:
+            production_hosts = [host for host in settings.ALLOWED_HOSTS if host not in ['localhost', '127.0.0.1']]
+            base_domain = production_hosts[0] if production_hosts else 'localhost:8000'
+        else:
+            base_domain = 'localhost:8000'
+
+        base_url = f"https://{base_domain}" if base_domain != 'localhost:8000' else f"http://{base_domain}"
+
+        # Determine provider type
+        is_business = bool(provider_profile.business_name)
+
+        # Get profile photo URL
+        profile_photo = None
+        if provider_profile.profile_photo:
+            profile_photo = f"{base_url}{provider_profile.profile_photo.url}"
+
+        # Get languages as array
+        languages = []
+        if provider_profile.languages:
+            languages = [lang.strip() for lang in provider_profile.languages.split(',') if lang.strip()]
+
+        # Build base provider data
+        provider_data = {
+            'user_id': provider_profile.user.id,
+            'mobile_number': provider_profile.user.mobile_number if provider_profile.user else '',
+            'user_type': provider_profile.user_type,
+            'provider_type': 'business' if is_business else 'individual',
+            'service_type': provider_profile.service_type,
+            'profile_photo': profile_photo,
+            'languages': languages,
+            'provider_id': provider_profile.provider_id,
+            'service_coverage_area': provider_profile.service_coverage_area,
+            'profile_complete': provider_profile.profile_complete,
+            'can_access_app': provider_profile.can_access_app,
+            'is_active_for_work': provider_profile.is_active_for_work,
+            'created_at': provider_profile.created_at.isoformat() if provider_profile.created_at else None,
+            'updated_at': provider_profile.updated_at.isoformat() if provider_profile.updated_at else None
+        }
+
+        # Add individual or business specific fields
+        if not is_business:
+            provider_data.update({
+                'full_name': provider_profile.full_name,
+                'gender': provider_profile.gender,
+                'date_of_birth': provider_profile.date_of_birth.isoformat() if provider_profile.date_of_birth else None,
+                'age': provider_profile.age
+            })
+        else:
+            provider_data.update({
+                'business_name': provider_profile.business_name,
+                'business_location': provider_profile.business_location,
+                'established_date': provider_profile.established_date.isoformat() if provider_profile.established_date else None,
+                'website': provider_profile.website
+            })
+
+        # Get service data if available
+        service_data = None
+        if provider_profile.service_type:
+            try:
+                from apps.profiles.models import UserWorkSelection, UserWorkSubCategory
+
+                work_selection = UserWorkSelection.objects.select_related('main_category').get(user=provider_profile)
+                subcategories = UserWorkSubCategory.objects.select_related('sub_category').filter(
+                    user_work_selection=work_selection
+                )
+
+                service_data = {
+                    "main_category_id": work_selection.main_category.category_code if work_selection.main_category else None,
+                    "main_category_name": work_selection.main_category.display_name if work_selection.main_category else None,
+                    "sub_category_ids": [sub.sub_category.subcategory_code for sub in subcategories],
+                    "sub_category_names": [sub.sub_category.display_name for sub in subcategories],
+                }
+
+                # Add service-specific data
+                if provider_profile.service_type == 'skill':
+                    service_data.update({
+                        "years_experience": work_selection.years_experience,
+                        "description": work_selection.skills
+                    })
+                elif provider_profile.service_type == 'vehicle':
+                    service_data.update({
+                        "years_experience": work_selection.years_experience,
+                    })
+                    if hasattr(provider_profile, 'vehicle_service') and provider_profile.vehicle_service:
+                        vehicle_data = provider_profile.vehicle_service
+                        service_data.update({
+                            "license_number": vehicle_data.license_number,
+                            "vehicle_registration_number": vehicle_data.vehicle_registration_number,
+                            "description": vehicle_data.driving_experience_description,
+                            "service_offering_types": vehicle_data.service_offering_types.split(',') if vehicle_data.service_offering_types else []
+                        })
+                elif provider_profile.service_type == 'properties':
+                    if hasattr(provider_profile, 'property_service') and provider_profile.property_service:
+                        property_data = provider_profile.property_service
+                        service_data.update({
+                            "property_title": property_data.property_title,
+                            "parking_availability": property_data.parking_availability,
+                            "furnishing_type": property_data.furnishing_type,
+                            "description": property_data.property_description,
+                            "service_offering_types": property_data.service_offering_types.split(',') if property_data.service_offering_types else []
+                        })
+                elif provider_profile.service_type == 'SOS':
+                    if hasattr(provider_profile, 'sos_service') and provider_profile.sos_service:
+                        sos_data = provider_profile.sos_service
+                        service_data.update({
+                            "contact_number": sos_data.contact_number,
+                            "location": sos_data.current_location,
+                            "description": sos_data.emergency_description
+                        })
+            except UserWorkSelection.DoesNotExist:
+                service_data = None
+
+        provider_data['service_data'] = service_data
+
+        # Get portfolio images
+        portfolio_images = []
+        if hasattr(provider_profile, 'portfolio_images') and provider_profile.portfolio_images.exists():
+            portfolio_images = [f"{base_url}{img.image.url}" for img in provider_profile.portfolio_images.all()]
+        provider_data['portfolio_images'] = portfolio_images
+
+        # Get verification status
+        verification_status = {
+            'aadhaar_verified': False,
+            'aadhaar_status': None,
+            'license_verified': False,
+            'license_status': None
+        }
+        if hasattr(provider_profile, 'verification') and provider_profile.verification:
+            verification = provider_profile.verification
+            verification_status = {
+                'aadhaar_verified': verification.aadhaar_verified,
+                'aadhaar_status': verification.aadhaar_status,
+                'license_verified': verification.license_verified,
+                'license_status': verification.license_status
+            }
+        provider_data['verification_status'] = verification_status
+
+        # Get wallet balance
+        wallet = {'balance': 0.00, 'currency': 'INR'}
+        if hasattr(provider_profile.user, 'wallet') and provider_profile.user.wallet:
+            wallet_obj = provider_profile.user.wallet
+            wallet = {
+                'balance': float(wallet_obj.balance),
+                'currency': 'INR'
+            }
+        provider_data['wallet'] = wallet
+
+        # Get rating summary
+        from django.db.models import Avg, Count
+        rating_stats = WorkOrder.objects.filter(
+            provider=provider_profile.user,
+            status='completed'
+        ).aggregate(
+            avg_rating=Avg('session__rating_stars'),
+            total_reviews=Count('session__rating_stars', filter=models.Q(session__rating_stars__isnull=False))
+        )
+        rating_summary = {
+            'average_rating': round(rating_stats['avg_rating'], 2) if rating_stats['avg_rating'] else 0.0,
+            'total_reviews': rating_stats['total_reviews'] or 0
+        }
+        provider_data['rating_summary'] = rating_summary
+
+        # Get service history (counts only for WebSocket)
+        total_service = WorkOrder.objects.filter(provider=provider_profile.user).count()
+        completed_service = WorkOrder.objects.filter(provider=provider_profile.user, status='completed').count()
+        cancelled_service = WorkOrder.objects.filter(provider=provider_profile.user, status='cancelled').count()
+        rejected_service = WorkOrder.objects.filter(provider=provider_profile.user, status='rejected').count()
+
+        service_history = {
+            "total_service": total_service,
+            "completed_service": completed_service,
+            "cancelled_service": cancelled_service,
+            "rejected_service": rejected_service
+        }
+        provider_data['service_history'] = service_history
+
+        return provider_data
+
+    except Exception as e:
+        logger.error(f"Error building provider data: {str(e)}")
+        return {
+            'user_id': provider_profile.user.id if provider_profile.user else None,
+            'provider_id': provider_profile.provider_id if hasattr(provider_profile, 'provider_id') else None,
+            'mobile_number': provider_profile.user.mobile_number if provider_profile.user else '',
+            'user_type': 'provider'
         }
 
 

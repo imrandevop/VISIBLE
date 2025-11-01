@@ -732,6 +732,22 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
             return False
 
     @database_sync_to_async
+    def get_provider_profile_data(self):
+        """Get complete provider profile data"""
+        from apps.profiles.work_assignment_views import build_complete_provider_data
+
+        try:
+            provider_profile = self.user.profile
+            return build_complete_provider_data(provider_profile)
+        except Exception as e:
+            logger.error(f"Error getting provider profile data: {e}")
+            return {
+                'user_id': self.user.id,
+                'mobile_number': self.user.mobile_number,
+                'user_type': 'provider'
+            }
+
+    @database_sync_to_async
     def get_user_communication_mediums(self, user_id):
         """Get user's available communication mediums"""
         from apps.profiles.models import UserProfile
@@ -1258,6 +1274,9 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
             provider_mediums = await self.get_user_communication_mediums(self.user.id)
             seeker_mediums = await self.get_user_communication_mediums(session_data['seeker_id'])
 
+            # Get complete provider profile data
+            provider_profile_data = await self.get_provider_profile_data()
+
             await self.channel_layer.group_send(
                 seeker_group,
                 {
@@ -1267,7 +1286,8 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                     'connection_state': 'active',
                     'message': 'Provider accepted your request. Session is now active.',
                     'provider_available_mediums': provider_mediums,
-                    'seeker_available_mediums': seeker_mediums
+                    'seeker_available_mediums': seeker_mediums,
+                    'provider': provider_profile_data
                 }
             )
 

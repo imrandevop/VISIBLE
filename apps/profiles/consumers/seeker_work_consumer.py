@@ -460,6 +460,7 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
             'message': event['message'],
             'provider_available_mediums': event.get('provider_available_mediums', {}),
             'seeker_available_mediums': event.get('seeker_available_mediums', {}),
+            'provider': event.get('provider', {}),
             'timestamp': timezone.now().isoformat()
         }))
 

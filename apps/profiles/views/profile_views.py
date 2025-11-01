@@ -925,6 +925,9 @@ def get_profile_api(request, version=None):
             # Determine provider type based on business_name
             is_business_provider = bool(profile.business_name)
 
+            # Add provider_type field to match setup API response
+            user_profile_data['provider_type'] = 'business' if is_business_provider else 'individual'
+
             # Filter based on provider type
             if not is_business_provider:
                 # Remove business fields for individual providers
@@ -939,7 +942,7 @@ def get_profile_api(request, version=None):
                 user_profile_data.pop('gender', None)
                 user_profile_data.pop('age', None)
 
-        # Get service_data (category information)
+        # Get service_data (category information and service-specific details)
         service_data = None
         if profile.user_type == 'provider' and profile.service_type:
             try:
@@ -948,14 +951,53 @@ def get_profile_api(request, version=None):
                     user_work_selection=work_selection
                 )
 
+                # Base service data with category information
                 service_data = {
                     "main_category_id": work_selection.main_category.category_code if work_selection.main_category else None,
                     "main_category_name": work_selection.main_category.display_name if work_selection.main_category else None,
                     "sub_category_ids": [sub.sub_category.subcategory_code for sub in subcategories],
                     "sub_category_names": [sub.sub_category.display_name for sub in subcategories],
-                    "years_experience": work_selection.years_experience,
-                    "skills": work_selection.skills
                 }
+
+                # Add service-specific data based on service_type
+                if profile.service_type == 'skill':
+                    service_data.update({
+                        "years_experience": work_selection.years_experience,
+                        "description": work_selection.skills  # Map 'skills' DB field to 'description' response field
+                    })
+                elif profile.service_type == 'vehicle':
+                    service_data.update({
+                        "years_experience": work_selection.years_experience,
+                    })
+                    # Get vehicle-specific data
+                    if hasattr(profile, 'vehicle_service') and profile.vehicle_service:
+                        vehicle_data = profile.vehicle_service
+                        service_data.update({
+                            "license_number": vehicle_data.license_number,
+                            "vehicle_registration_number": vehicle_data.vehicle_registration_number,
+                            "description": vehicle_data.driving_experience_description,  # Map to 'description'
+                            "service_offering_types": vehicle_data.service_offering_types.split(',') if vehicle_data.service_offering_types else []
+                        })
+                elif profile.service_type == 'properties':
+                    # Get property-specific data
+                    if hasattr(profile, 'property_service') and profile.property_service:
+                        property_data = profile.property_service
+                        service_data.update({
+                            "property_title": property_data.property_title,
+                            "parking_availability": property_data.parking_availability,
+                            "furnishing_type": property_data.furnishing_type,
+                            "description": property_data.property_description,  # Map to 'description'
+                            "service_offering_types": property_data.service_offering_types.split(',') if property_data.service_offering_types else []
+                        })
+                elif profile.service_type == 'SOS':
+                    # Get SOS-specific data
+                    if hasattr(profile, 'sos_service') and profile.sos_service:
+                        sos_data = profile.sos_service
+                        service_data.update({
+                            "contact_number": sos_data.contact_number,
+                            "location": sos_data.current_location,  # Map 'current_location' to 'location'
+                            "description": sos_data.emergency_description  # Map to 'description'
+                        })
             except UserWorkSelection.DoesNotExist:
                 service_data = None
 
@@ -1036,11 +1078,27 @@ def get_profile_api(request, version=None):
         cancelled_service = WorkOrder.objects.filter(provider=user, status='cancelled').count()
         rejected_service = WorkOrder.objects.filter(provider=user, status='rejected').count()
 
+        # Get recent work orders
+        recent_orders = WorkOrder.objects.filter(provider=user).order_by('-created_at')[:10]
+        recent_work_orders = []
+        for order in recent_orders:
+            recent_work_orders.append({
+                "id": order.id,
+                "service_type": order.service_type,
+                "main_category_code": order.main_category_code,
+                "sub_category_code": order.sub_category_code,
+                "status": order.status,
+                "created_at": order.created_at.isoformat() if order.created_at else None,
+                "response_time": order.response_time.isoformat() if order.response_time else None,
+                "completion_time": order.completion_time.isoformat() if order.completion_time else None
+            })
+
         service_history = {
             "total_service": total_service,
             "completed_service": completed_service,
             "cancelled_service": cancelled_service,
-            "rejected_service": rejected_service
+            "rejected_service": rejected_service,
+            "recent_work_orders": recent_work_orders
         }
 
         # Build final response for providers
