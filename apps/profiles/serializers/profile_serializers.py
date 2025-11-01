@@ -896,8 +896,6 @@ class ProviderProfileSetupSerializer(BaseProfileSerializer):
         """Validate vehicle-specific required fields"""
         if is_required:
             required_fields = {
-                'license_number': 'License number is required for vehicle providers',
-                'vehicle_registration_number': 'Vehicle registration number is required for vehicle providers',
                 'years_experience': 'Years of experience is required for vehicle providers',
                 'description': 'Description is required for vehicle providers',
                 'vehicle_service_offering_types': 'Service offering types are required for vehicle providers (rent, sale, lease, or all)'
