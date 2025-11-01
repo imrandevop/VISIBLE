@@ -744,6 +744,7 @@ def provider_profile_setup_api(request, version=None):
         Error (404) - Profile Not Found (PATCH):
         {
             "status": "error",
+            
             "message": "Profile not found. Use POST method to create profile.",
             "hint": "Use POST /api/1/profiles/provider/setup/ to create your profile"
         }

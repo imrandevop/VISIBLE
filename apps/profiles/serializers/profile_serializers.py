@@ -500,12 +500,12 @@ class ProviderProfileSetupSerializer(BaseProfileSerializer):
         allow_null=True,
         help_text="Date when business was established"
     )
-    website = serializers.URLField(
+    website = serializers.CharField(
         max_length=300,
         required=False,
         allow_blank=True,
         allow_null=True,
-        help_text="Business website (optional)"
+        help_text="Business website (optional, no validation)"
     )
 
     # Provider Service Coverage Area
