@@ -270,6 +270,61 @@ def provider_profile_setup_api(request, version=None):
         # Portfolio
         portfolio_images: [<file1>, <file2>, <file3>] (1-3 images, optional)
 
+    Body (form-data) - INDIVIDUAL VEHICLE PROVIDER:
+        # Provider type (required)
+        provider_type: "individual"
+
+        # Personal fields (required for individual)
+        full_name: "Amit Sharma"
+        date_of_birth: "1985-03-10"
+        gender: "male"
+        profile_photo: <file> (optional)
+
+        # Service configuration
+        service_type: "vehicle"
+        main_category_id: "MS0002"
+        sub_category_ids: ["SS0010", "SS0011"]
+        service_coverage_area: 30 (in kilometers)
+        languages: ["English", "Hindi"]
+
+        # Vehicle-specific fields (required)
+        license_number: "DL1420150012345"
+        vehicle_registration_number: "DL01AB1234"
+        years_experience: 8
+        driving_experience_description: "8 years professional driving experience with corporate clients, airport transfers, and outstation trips. Clean driving record."
+        vehicle_service_offering_types: ["rent", "lease"]
+
+        # Portfolio
+        portfolio_images: [<vehicle_photo1>, <vehicle_photo2>] (1-3 images, optional)
+
+    Body (form-data) - BUSINESS VEHICLE PROVIDER:
+        # Provider type (required)
+        provider_type: "business"
+
+        # Business fields (required for business)
+        business_name: "City Cabs & Rentals"
+        business_location: "123 Transport Nagar, Delhi"
+        established_date: "2010-05-15"
+        website: "https://citycabs.com" (optional)
+        profile_photo: <file> (required for business)
+
+        # Service configuration
+        service_type: "vehicle"
+        main_category_id: "MS0002"
+        sub_category_ids: ["SS0010", "SS0011", "SS0012"]
+        service_coverage_area: 50 (in kilometers)
+        languages: ["English", "Hindi", "Punjabi"]
+
+        # Vehicle-specific fields (required)
+        license_number: "DL1420150012345"
+        vehicle_registration_number: "DL01XY9999"
+        years_experience: 12
+        driving_experience_description: "12 years in vehicle rental business. Fleet of 20+ vehicles with professional drivers. Corporate tie-ups and airport services."
+        vehicle_service_offering_types: ["rent", "lease", "sale"]
+
+        # Portfolio
+        portfolio_images: [<fleet_photo1>, <fleet_photo2>, <office_photo>] (1-3 images, optional)
+
     Body (form-data) - INDIVIDUAL PROPERTY PROVIDER:
         # Provider type (required)
         provider_type: "individual"
@@ -466,6 +521,77 @@ def provider_profile_setup_api(request, version=None):
                     "description": "Expert plumber with 5 years of residential and commercial experience. Specialized in pipe fitting, leak repairs."
                 },
                 "portfolio_images": ["/media/portfolios/img1.jpg", "/media/portfolios/img2.jpg", "/media/portfolios/img3.jpg"],
+                "created_at": "2025-08-15T10:30:00Z",
+                "updated_at": "2025-08-15T10:30:00Z"
+            }
+        }
+
+        Success (200) - Individual Vehicle Provider (POST):
+        {
+            "status": "success",
+            "message": "Provider profile created successfully",
+            "profile": {
+                "id": 3,
+                "full_name": "Amit Sharma",
+                "user_type": "provider",
+                "provider_type": "individual",
+                "service_type": "vehicle",
+                "gender": "male",
+                "date_of_birth": "1985-03-10",
+                "profile_photo": "/media/profiles/photo.jpg",
+                "profile_complete": true,
+                "can_access_app": true,
+                "service_coverage_area": 30,
+                "languages": ["English", "Hindi"],
+                "provider_id": "PRV0003",
+                "service_data": {
+                    "main_category_id": "MS0002",
+                    "main_category_name": "VEHICLE",
+                    "sub_category_ids": ["SS0010", "SS0011"],
+                    "sub_category_names": ["Car Rental", "Driver Service"],
+                    "license_number": "DL1420150012345",
+                    "vehicle_registration_number": "DL01AB1234",
+                    "years_experience": 8,
+                    "driving_experience_description": "8 years professional driving experience with corporate clients, airport transfers, and outstation trips. Clean driving record.",
+                    "service_offering_types": ["rent", "lease"]
+                },
+                "portfolio_images": ["/media/portfolios/vehicle1.jpg", "/media/portfolios/vehicle2.jpg"],
+                "created_at": "2025-08-15T10:30:00Z",
+                "updated_at": "2025-08-15T10:30:00Z"
+            }
+        }
+
+        Success (200) - Business Vehicle Provider (POST):
+        {
+            "status": "success",
+            "message": "Provider profile created successfully",
+            "profile": {
+                "id": 4,
+                "user_type": "provider",
+                "provider_type": "business",
+                "service_type": "vehicle",
+                "business_name": "City Cabs & Rentals",
+                "business_location": "123 Transport Nagar, Delhi",
+                "established_date": "2010-05-15",
+                "website": "https://citycabs.com",
+                "profile_photo": "/media/profiles/business_logo.jpg",
+                "profile_complete": true,
+                "can_access_app": true,
+                "service_coverage_area": 50,
+                "languages": ["English", "Hindi", "Punjabi"],
+                "provider_id": "PRV0004",
+                "service_data": {
+                    "main_category_id": "MS0002",
+                    "main_category_name": "VEHICLE",
+                    "sub_category_ids": ["SS0010", "SS0011", "SS0012"],
+                    "sub_category_names": ["Car Rental", "Driver Service", "Luxury Vehicles"],
+                    "license_number": "DL1420150012345",
+                    "vehicle_registration_number": "DL01XY9999",
+                    "years_experience": 12,
+                    "driving_experience_description": "12 years in vehicle rental business. Fleet of 20+ vehicles with professional drivers. Corporate tie-ups and airport services.",
+                    "service_offering_types": ["rent", "lease", "sale"]
+                },
+                "portfolio_images": ["/media/portfolios/fleet1.jpg", "/media/portfolios/fleet2.jpg", "/media/portfolios/office.jpg"],
                 "created_at": "2025-08-15T10:30:00Z",
                 "updated_at": "2025-08-15T10:30:00Z"
             }

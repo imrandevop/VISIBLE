@@ -2,7 +2,7 @@
 # Part 2: API Endpoints and User Flows
 
 **Version:** 1.0
-**Last Updated:** October 23, 2025
+**Last Updated:** October 30, 2025
 
 ---
 
@@ -223,10 +223,14 @@ All responses follow this structure:
 
 ### 3.1 Seeker Profile Setup
 
-**Endpoint:** `POST /api/1/profiles/seeker/setup/`
+**Endpoint:** `POST /api/1/profiles/seeker/setup/` (Create) | `PATCH /api/1/profiles/seeker/setup/` (Update)
 **Authentication:** Required
 **File:** `apps/profiles/views/profile_views.py`
 **Serializer:** `SeekerProfileSetupSerializer`
+
+**Methods:**
+- `POST` - Create new seeker profile (profile must not exist)
+- `PATCH` - Update existing seeker profile (partial updates supported)
 
 **Request Body (Individual Seeker):**
 ```json
@@ -314,18 +318,36 @@ All responses follow this structure:
 }
 ```
 
+**Update Example (PATCH):**
+```json
+{
+  "full_name": "John Updated Name",
+  "website": "https://newwebsite.com"
+}
+```
+*Note: Only send fields you want to update. All other fields remain unchanged.*
+
 ---
 
 ### 3.2 Provider Profile Setup
 
-**Endpoint:** `POST /api/1/profiles/provider/setup/`
+**Endpoint:** `POST /api/1/profiles/provider/setup/` (Create) | `PATCH /api/1/profiles/provider/setup/` (Update)
 **Authentication:** Required
 **File:** `apps/profiles/views/profile_views.py`
 **Serializer:** `ProviderProfileSetupSerializer`
 
-**Request Body:**
+**Methods:**
+- `POST` - Create new provider profile (profile must not exist)
+- `PATCH` - Update existing provider profile (partial updates supported)
+
+**Provider Types:**
+- `individual` - Individual service provider (personal details required)
+- `business` - Business service provider (business details required)
+
+**Request Body (Individual Provider - Skill Type):**
 ```json
 {
+  "provider_type": "individual",
   "full_name": "Jane Smith",
   "date_of_birth": "1988-08-20",
   "gender": "female",
@@ -336,7 +358,30 @@ All responses follow this structure:
   "main_category_id": "MS0001",
   "sub_category_ids": ["SS0001", "SS0002", "SS0003"],
   "years_experience": 5,
-  "skills": "Expert in plumbing work with 5 years experience",
+  "description": "Expert in plumbing work with 5 years experience",
+  "portfolio_images": [
+    "<file_upload_or_url>",
+    "<file_upload_or_url>"
+  ]
+}
+```
+
+**Request Body (Business Provider - Skill Type):**
+```json
+{
+  "provider_type": "business",
+  "business_name": "Smith Plumbing Services",
+  "business_location": "123 Business Street, City",
+  "established_date": "2015-06-20",
+  "website": "https://smithplumbing.com",
+  "profile_photo": "<file_upload_or_url>",
+  "languages": ["English", "Hindi"],
+  "service_type": "skill",
+  "service_coverage_area": 25,
+  "main_category_id": "MS0001",
+  "sub_category_ids": ["SS0001", "SS0002", "SS0003"],
+  "years_experience": 5,
+  "description": "Professional plumbing services for 5 years",
   "portfolio_images": [
     "<file_upload_or_url>",
     "<file_upload_or_url>"
@@ -361,7 +406,6 @@ All responses follow this structure:
   "main_category_id": "MS0002",
   "sub_category_ids": ["SS0010", "SS0011"],
   "years_experience": 5,
-  "vehicle_types": ["Car", "SUV"],
   "license_number": "DL1234567890",
   "vehicle_registration_number": "DL01AB1234",
   "driving_experience_description": "5 years professional driving experience",
@@ -370,7 +414,6 @@ All responses follow this structure:
 ```
 
 **Required Fields for Vehicle Providers:**
-- `vehicle_types` - Array of vehicle types
 - `license_number` - Driving license number
 - `vehicle_registration_number` - Vehicle registration number
 - `years_experience` - Years of driving experience
@@ -474,207 +517,19 @@ All responses follow this structure:
 - Date of birth: Must be at least 18 years old
 - Profile photo: Optional but recommended
 
----
-
-### 3.1.1 Separated Profile Setup Endpoints (New)
-
-**NEW:** As of October 2025, we've introduced separated endpoints for better code maintainability and clearer API structure. These endpoints provide the same functionality as the unified `/setup/` endpoint but are specifically tailored for seeker and provider profiles.
-
-#### Seeker Profile Setup
-
-**Endpoint:** `POST /api/1/profiles/seeker/setup/`
-**Authentication:** Required
-**File:** `apps/profiles/views/profile_views.py`
-**Serializer:** `apps/profiles/serializers/profile_serializers.py` - `SeekerProfileSetupSerializer`
-
-**Request Body (Individual Seeker):**
+**Update Example (PATCH):**
 ```json
 {
-  "full_name": "John Doe",
-  "date_of_birth": "1990-05-15",
-  "gender": "male",
-  "profile_photo": "<file_upload_or_url>",
-  "languages": ["English", "Hindi"]
+  "description": "Updated service description with 10 years experience",
+  "service_coverage_area": 30,
+  "years_experience": 10
 }
 ```
-
-**Request Body (Business Seeker):**
-```json
-{
-  "seeker_type": "business",
-  "full_name": "John Doe",
-  "date_of_birth": "1990-05-15",
-  "gender": "male",
-  "profile_photo": "<file_upload_or_url>",
-  "languages": ["English", "Hindi"],
-  "business_name": "Doe Enterprises",
-  "business_location": "123 Business Street, City",
-  "established_date": "2015-06-20",
-  "website": "https://www.doeenterprises.com"
-}
-```
-
-**Key Differences from Unified Endpoint:**
-- No need to specify `user_type` - automatically set to "seeker"
-- Clearer validation errors specific to seeker profiles
-- Only seeker-related fields are accepted
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "message": "Seeker profile setup completed successfully",
-  "profile": {
-    "id": 123,
-    "full_name": "John Doe",
-    "user_type": "seeker",
-    "seeker_type": "individual",
-    "gender": "male",
-    "date_of_birth": "1990-05-15",
-    "profile_photo": "https://.../photo.jpg",
-    "languages": ["English", "Hindi"],
-    "profile_complete": true,
-    "can_access_app": true,
-    "mobile_number": "9876543210",
-    "created_at": "2025-10-30T10:30:00Z",
-    "updated_at": "2025-10-30T10:30:00Z"
-  }
-}
-```
-
-#### Provider Profile Setup
-
-**Endpoint:** `POST /api/1/profiles/provider/setup/`
-**Authentication:** Required
-**File:** `apps/profiles/views/profile_views.py`
-**Serializer:** `apps/profiles/serializers/profile_serializers.py` - `ProviderProfileSetupSerializer`
-
-**Request Body (Skill Provider):**
-```json
-{
-  "full_name": "Jane Smith",
-  "date_of_birth": "1988-08-20",
-  "gender": "female",
-  "profile_photo": "<file_upload_or_url>",
-  "languages": ["English", "Hindi"],
-  "service_type": "skill",
-  "service_coverage_area": 25,
-  "main_category_id": "MS0001",
-  "sub_category_ids": ["SS0001", "SS0002"],
-  "years_experience": 5,
-  "skills": "Expert in plumbing work",
-  "portfolio_images": ["<file1>", "<file2>"]
-}
-```
-
-**Key Differences from Unified Endpoint:**
-- No need to specify `user_type` - automatically set to "provider"
-- Clearer validation errors specific to provider profiles
-- Only provider-related fields are accepted
-- Better error messages for service-specific validations
-
-**Response (200):**
-```json
-{
-  "status": "success",
-  "message": "Provider profile setup completed successfully",
-  "profile": {
-    "id": 124,
-    "full_name": "Jane Smith",
-    "user_type": "provider",
-    "service_type": "skill",
-    "gender": "female",
-    "date_of_birth": "1988-08-20",
-    "profile_photo": "https://.../photo.jpg",
-    "languages": ["English", "Hindi"],
-    "service_coverage_area": 25,
-    "provider_id": "AB87654321",
-    "profile_complete": true,
-    "can_access_app": true,
-    "service_data": {
-      "main_category_id": "MS0001",
-      "main_category_name": "Plumber",
-      "sub_category_ids": ["SS0001", "SS0002"],
-      "sub_category_names": ["Pipe Fitting", "Leak Repair"],
-      "years_experience": 5,
-      "skills": "Expert in plumbing work"
-    },
-    "portfolio_images": [
-      "https://.../portfolio1.jpg",
-      "https://.../portfolio2.jpg"
-    ],
-    "mobile_number": "9876543210",
-    "created_at": "2025-10-30T10:30:00Z",
-    "updated_at": "2025-10-30T10:30:00Z"
-  }
-}
-```
-
-#### Migration Guide
-
-**For Mobile/Frontend Developers:**
-
-**Option 1: Immediate Migration (Recommended)**
-Update your app to use the new separated endpoints based on user type selection:
-
-```dart
-// Old code
-final response = await http.post(
-  'https://api.visibleapp.in/api/1/profiles/setup/',
-  body: {
-    'user_type': userType,  // 'seeker' or 'provider'
-    ...otherFields
-  }
-);
-
-// New code
-final endpoint = userType == 'seeker'
-  ? 'https://api.visibleapp.in/api/1/profiles/seeker/setup/'
-  : 'https://api.visibleapp.in/api/1/profiles/provider/setup/';
-
-final response = await http.post(
-  endpoint,
-  body: {
-    // No need to send user_type
-    ...otherFields
-  }
-);
-```
-
-**Option 2: No Changes Required**
-The original unified endpoint `/api/1/profiles/setup/` is still available and fully functional. You can continue using it without any code changes.
-
-**Benefits of Migration:**
-1. ✅ **Clearer Errors** - Validation errors are more specific and easier to debug
-2. ✅ **Better Documentation** - Each endpoint has focused documentation
-3. ✅ **Type Safety** - No risk of sending provider fields to seeker endpoint
-4. ✅ **Future Proof** - Easier to add new features specific to each user type
-5. ✅ **Better Performance** - Smaller serializers mean faster validation
-
-**Backward Compatibility:**
-- The unified `/api/1/profiles/setup/` endpoint remains fully supported
-- All existing mobile apps will continue to work without any changes
-- No breaking changes to response structure
-- Same authentication and validation rules apply
-
-**When to Use Which Endpoint:**
-
-| Scenario | Recommended Endpoint |
-|----------|---------------------|
-| New app development | Use separated endpoints (`/seeker/setup/` or `/provider/setup/`) |
-| Existing app (can update) | Migrate to separated endpoints for better maintainability |
-| Existing app (cannot update immediately) | Continue using unified `/setup/` endpoint |
-| Backend/Admin tools | Use separated endpoints for clarity |
-
-**Important Notes:**
-- Profile updates work the same way - just POST with updated fields
-- Both create and update operations use the same endpoint (no separate PUT/PATCH)
-- The `user_type` field is automatically set and cannot be changed via these endpoints
-- For role switching (seeker ↔ provider), use the `/switch-role/` endpoint
+*Note: Only send fields you want to update. All other fields remain unchanged.*
 
 ---
 
-### 3.2 Get Profile
+### 3.3 Get Profile
 
 **Endpoint:** `GET /api/1/profiles/me/`
 **Authentication:** Required
@@ -770,7 +625,7 @@ The original unified endpoint `/api/1/profiles/setup/` is still available and fu
 
 ---
 
-### 3.3 Get Profile Status
+### 3.4 Get Profile Status
 
 **Endpoint:** `GET /api/1/profiles/status/`
 **Authentication:** Required
@@ -807,7 +662,7 @@ The original unified endpoint `/api/1/profiles/setup/` is still available and fu
 
 ---
 
-### 3.4 Update FCM Token
+### 3.5 Update FCM Token
 
 **Endpoint:** `POST /api/1/profiles/update-fcm-token/`
 **Authentication:** Required
@@ -834,7 +689,7 @@ The original unified endpoint `/api/1/profiles/setup/` is still available and fu
 
 ---
 
-### 3.5 Update Communication Settings
+### 3.6 Update Communication Settings
 
 **Endpoint:** `POST /api/1/profiles/communication/`
 **Authentication:** Required
@@ -876,7 +731,7 @@ The original unified endpoint `/api/1/profiles/setup/` is still available and fu
 
 ---
 
-### 3.6 Get Wallet
+### 3.7 Get Wallet
 
 **Endpoint:** `GET /api/1/profiles/wallet/`
 **Authentication:** Required
@@ -920,7 +775,7 @@ The original unified endpoint `/api/1/profiles/setup/` is still available and fu
 
 ---
 
-### 3.7 Provider Dashboard
+### 3.8 Provider Dashboard
 
 **Endpoint:** `GET /api/1/profiles/provider/dashboard/`
 **Authentication:** Required (user_type must be provider)
@@ -987,7 +842,7 @@ The original unified endpoint `/api/1/profiles/setup/` is still available and fu
 
 ---
 
-### 3.8 Seeker Dashboard
+### 3.9 Seeker Dashboard
 
 **Endpoint:** `GET /api/1/profiles/seeker/dashboard/`
 **Authentication:** Required (user_type must be seeker)
@@ -1039,7 +894,7 @@ The original unified endpoint `/api/1/profiles/setup/` is still available and fu
 
 ---
 
-### 3.9 Switch Role
+### 3.10 Switch Role
 
 **Endpoint:** `POST /api/1/profiles/switch-role/`
 **Authentication:** Required
@@ -1912,6 +1767,7 @@ if (result.status === 'success') {
 
 **Document Version:** 1.0
 **Created:** October 23, 2025
+**Last Updated:** October 30, 2025
 **Total Endpoints:** 20+
 **Authentication:** JWT Bearer Tokens
 **API Version:** v1

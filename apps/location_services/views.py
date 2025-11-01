@@ -739,7 +739,6 @@ def get_vehicle_service_data(profile):
     if hasattr(profile, 'vehicle_service') and profile.vehicle_service:
         vehicle_data = profile.vehicle_service
         data.update({
-            'vehicle_types': vehicle_data.vehicle_types.split(',') if vehicle_data.vehicle_types else [],
             'license_number': vehicle_data.license_number,
             'vehicle_registration_number': vehicle_data.vehicle_registration_number,
             'driving_experience_description': vehicle_data.driving_experience_description

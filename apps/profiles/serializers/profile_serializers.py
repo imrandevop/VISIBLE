@@ -1226,7 +1226,6 @@ class ProviderProfileSetupSerializer(BaseProfileSerializer):
         VehicleServiceData.objects.update_or_create(
             user_profile=profile,
             defaults={
-                'vehicle_types': '',  # Removed field, keep empty for DB compatibility
                 'license_number': validated_data.get('license_number', ''),
                 'vehicle_registration_number': validated_data.get('vehicle_registration_number', ''),
                 'years_experience': validated_data.get('years_experience', 0),

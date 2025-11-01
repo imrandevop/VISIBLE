@@ -2,7 +2,7 @@
 # Part 1: Overview and Architecture
 
 **Version:** 1.0
-**Last Updated:** October 23, 2025
+**Last Updated:** October 30, 2025
 **Django Version:** 5.2.5
 **Python Version:** 3.x
 
@@ -567,7 +567,7 @@ Ensures uniqueness with retry mechanism
 - 1:N with ServicePortfolioImage (max 3)
 - 1:N with WorkOrder (as seeker or provider)
 - 1:N with ProviderReview (as provider)
-- 1:1 with VehicleServiceData (if service_type=vehicle)
+- 1:1 with DriverServiceData (if service_type=driver)
 - 1:1 with PropertyServiceData (if service_type=properties)
 - 1:1 with SOSServiceData (if service_type=SOS)
 - N:N with WorkCategory via UserWorkSelection (if service_type=skill)
@@ -576,13 +576,12 @@ Ensures uniqueness with retry mechanism
 
 ### 6.3 Service-Specific Models
 
-#### 6.3.1 VehicleServiceData
+#### 6.3.1 DriverServiceData
 **File:** `apps/profiles/models.py:221-237`
 
 | Field | Type | Description |
 |-------|------|-------------|
 | user_profile | OneToOne(UserProfile) | Primary key |
-| vehicle_types | TextField | Comma-separated vehicle types |
 | license_number | CharField(50) | Driving license number |
 | vehicle_registration_number | CharField(20) | Vehicle registration number |
 | years_experience | IntegerField | Years of driving experience |
@@ -1328,6 +1327,7 @@ MIDDLEWARE = [
 
 **Document Version:** 1.0
 **Created:** October 23, 2025
+**Last Updated:** October 30, 2025
 **Total Models:** 30+
 **Total Apps:** 7
 **Total Files Documented:** 50+
