@@ -540,7 +540,7 @@ def get_mock_rating_data():
 
 
 def get_complete_provider_data(profile, subcategory, distance, provider_lat, provider_lng):
-    """Get complete provider data including all profile details"""
+    """Get complete provider data matching profile setup API response structure"""
     try:
         from django.conf import settings
 
@@ -587,84 +587,116 @@ def get_complete_provider_data(profile, subcategory, distance, provider_lat, pro
         if profile.languages:
             languages = [lang.strip() for lang in profile.languages.split(',') if lang.strip()]
 
-        # Get skills (subcategory names), description (actual skills text), and experience from work selection
-        skills = None  # Will be array of subcategory names
-        description = ""  # Will be actual skills description text
-        experience = 0
-        main_category_data = None
-        all_subcategories = []
+        # Determine provider type (individual or business)
+        is_business = bool(profile.business_name)
+        provider_type = 'business' if is_business else 'individual'
 
+        # Build service_data structure matching profile setup API
+        service_data = None
         if hasattr(profile, 'work_selection') and profile.work_selection:
             work_selection = profile.work_selection
-            description = work_selection.skills or ""  # Actual skills description
-            experience = work_selection.years_experience or 0
-
-            if work_selection.main_category:
-                main_category_data = {
-                    'code': work_selection.main_category.category_code,
-                    'name': work_selection.main_category.display_name
-                }
 
             # Get all subcategories this provider offers
             subcategories_qs = work_selection.selected_subcategories.all()
-            all_subcategories = [
-                {
-                    'code': sub.sub_category.subcategory_code,
-                    'name': sub.sub_category.display_name
-                }
-                for sub in subcategories_qs
-            ]
 
-            # Skills = array of subcategory names
-            if all_subcategories:
-                skills = [sub['name'] for sub in all_subcategories]
-            else:
-                skills = None
+            # Base service_data with category information
+            service_data = {
+                'main_category_id': work_selection.main_category.category_code if work_selection.main_category else None,
+                'main_category_name': work_selection.main_category.display_name if work_selection.main_category else None,
+                'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories_qs],
+                'sub_category_names': [sub.sub_category.display_name for sub in subcategories_qs],
+            }
 
-        # Get service-specific data based on provider type
-        service_specific_data = get_service_specific_data(profile)
+            # Add service-specific fields based on service_type
+            if profile.service_type == 'skill':
+                service_data.update({
+                    'years_experience': work_selection.years_experience,
+                    'description': work_selection.skills  # Actual skills description text
+                })
+            elif profile.service_type == 'vehicle':
+                service_data.update({
+                    'years_experience': work_selection.years_experience,
+                })
+                # Get vehicle-specific data
+                if hasattr(profile, 'vehicle_service') and profile.vehicle_service:
+                    vehicle_data = profile.vehicle_service
+                    service_data.update({
+                        'license_number': vehicle_data.license_number,
+                        'vehicle_registration_number': vehicle_data.vehicle_registration_number,
+                        'description': vehicle_data.driving_experience_description,
+                        'service_offering_types': vehicle_data.service_offering_types.split(',') if vehicle_data.service_offering_types else []
+                    })
+            elif profile.service_type == 'properties':
+                # Get property-specific data
+                if hasattr(profile, 'property_service') and profile.property_service:
+                    property_data = profile.property_service
+                    service_data.update({
+                        'property_title': property_data.property_title,
+                        'parking_availability': property_data.parking_availability,
+                        'furnishing_type': property_data.furnishing_type,
+                        'description': property_data.property_description,
+                        'service_offering_types': property_data.service_offering_types.split(',') if property_data.service_offering_types else []
+                    })
+            elif profile.service_type == 'SOS':
+                # Get SOS-specific data
+                if hasattr(profile, 'sos_service') and profile.sos_service:
+                    sos_data = profile.sos_service
+                    service_data.update({
+                        'contact_number': sos_data.contact_number,
+                        'location': sos_data.current_location,
+                        'description': sos_data.emergency_description
+                    })
 
         # Get mock rating data (will be replaced with real data in future)
         rating_data = get_mock_rating_data()
 
-        # Build complete provider data
+        # Build base provider data matching profile setup API structure
         provider_data = {
-            'provider_id': getattr(profile, 'provider_id', f'P{profile.user.id}'),
-            'name': getattr(profile, 'full_name', 'Unknown'),
-            'mobile_number': profile.user.mobile_number if profile.user else '',
-            'age': profile.age,
-            'gender': profile.gender,
-            'date_of_birth': profile.date_of_birth.isoformat() if profile.date_of_birth else None,
-            'profile_photo': profile_photo,
-            'languages': languages,
-            'skills': skills,
-            'description': description,
-            'years_experience': experience,
+            'id': profile.id,
             'user_type': profile.user_type,
+            'provider_type': provider_type,
             'service_type': profile.service_type,
-            'service_coverage_area': profile.service_coverage_area,  # Coverage area in km
+            'profile_photo': profile_photo,
+            'service_coverage_area': profile.service_coverage_area,
+            'languages': languages,
+            'provider_id': getattr(profile, 'provider_id', f'P{profile.user.id}'),
+            'mobile_number': profile.user.mobile_number if profile.user else '',
+            'profile_complete': profile.profile_complete,
+            'can_access_app': profile.can_access_app,
+            'created_at': profile.created_at.isoformat() if profile.created_at else None,
+            'updated_at': profile.updated_at.isoformat() if profile.updated_at else None,
+            'service_data': service_data,
+            'portfolio_images': portfolio_images,
+            # Keep rating fields (as requested)
             'rating': rating_data['rating'],
             'total_reviews': rating_data['total_reviews'],
             'rating_distribution': rating_data['rating_distribution'],
             'reviews': rating_data['reviews'],
-            'is_verified': False,  # Default false
-            'images': portfolio_images,
-            'main_category': main_category_data,
-            'subcategory': {
-                'code': subcategory.subcategory_code,
-                'name': subcategory.display_name
-            },
-            'all_subcategories': all_subcategories,
-            'service_data': service_specific_data,
+            # Keep search-specific fields (distance and location)
             'distance_km': round(distance, 2),
             'location': {
                 'latitude': provider_lat,
                 'longitude': provider_lng
-            },
-            'profile_complete': profile.profile_complete,
-            'can_access_app': profile.can_access_app,
-            'created_at': profile.created_at.isoformat() if profile.created_at else None
+            }
         }
+
+        # Add individual-specific fields or business-specific fields
+        if not is_business:
+            # Individual provider
+            provider_data.update({
+                'full_name': profile.full_name,
+                'gender': profile.gender,
+                'date_of_birth': profile.date_of_birth.isoformat() if profile.date_of_birth else None,
+                'age': profile.age
+            })
+        else:
+            # Business provider
+            provider_data.update({
+                'business_name': profile.business_name,
+                'business_location': profile.business_location,
+                'established_date': profile.established_date.isoformat() if profile.established_date else None,
+                'website': profile.website
+            })
 
         return provider_data
 

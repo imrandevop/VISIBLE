@@ -280,13 +280,9 @@ class LocationConsumer(AsyncWebsocketConsumer):
             )
 
             if distance <= seeker['distance_radius']:
-                # Add distance and seeker-specific subcategory to provider data
+                # Add distance to provider data
                 provider_data = provider_status.copy()
                 provider_data['distance_km'] = round(distance, 2)
-                provider_data['subcategory'] = {
-                    'code': seeker['searching_subcategory_code'],
-                    'name': seeker['searching_subcategory_name']
-                }
 
                 # Notify this seeker about the new provider with complete data
                 await self.channel_layer.group_send(
@@ -421,77 +417,31 @@ class LocationConsumer(AsyncWebsocketConsumer):
             if profile.languages:
                 languages = [lang.strip() for lang in profile.languages.split(',') if lang.strip()]
 
-            # Get skills (subcategory names), description (actual skills text), and experience from work selection
-            skills = None  # Will be array of subcategory names
-            description = ""  # Will be actual skills description text
-            experience = 0
-            main_category_data = None
-            all_subcategories = []
+            # Determine provider type (individual or business)
+            provider_type = 'business' if profile.business_name else 'individual'
 
-            if hasattr(profile, 'work_selection') and profile.work_selection:
-                work_selection = profile.work_selection
-                description = work_selection.skills or ""  # Actual skills description
-                experience = work_selection.years_experience or 0
-
-                # Use main_category from work_selection if not provided
-                if not main_category and work_selection.main_category:
-                    main_category = work_selection.main_category
-
-                if main_category:
-                    main_category_data = {
-                        'code': main_category.category_code,
-                        'name': main_category.display_name
-                    }
-
-                # Get all subcategories this provider offers
-                subcategories_qs = work_selection.selected_subcategories.all()
-                all_subcategories = [
-                    {
-                        'code': sub.sub_category.subcategory_code,
-                        'name': sub.sub_category.display_name
-                    }
-                    for sub in subcategories_qs
-                ]
-
-                # Skills = array of subcategory names
-                if all_subcategories:
-                    skills = [sub['name'] for sub in all_subcategories]
-                else:
-                    skills = None
-
-            # Get service-specific data
-            service_specific_data = self.get_provider_service_data(profile)
+            # Get service-specific data (includes category info and service details)
+            service_specific_data = self.get_provider_service_data(profile, main_category, current_subcategory)
 
             # Get mock rating data (will be replaced with real data in future)
             rating_data = self.get_mock_rating_data()
 
-            # Build complete provider data
+            # Build complete provider data with common fields
             provider_data = {
                 'provider_id': getattr(profile, 'provider_id', f'P{profile.user.id}'),
-                'name': getattr(profile, 'full_name', 'Unknown'),
                 'mobile_number': profile.user.mobile_number if profile.user else '',
-                'age': profile.age,
-                'gender': profile.gender,
-                'date_of_birth': profile.date_of_birth.isoformat() if profile.date_of_birth else None,
                 'profile_photo': profile_photo,
                 'languages': languages,
-                'skills': skills,
-                'description': description,
-                'years_experience': experience,
                 'user_type': profile.user_type,
+                'provider_type': provider_type,
                 'service_type': profile.service_type,
+                'service_coverage_area': profile.service_coverage_area,
                 'rating': rating_data['rating'],
                 'total_reviews': rating_data['total_reviews'],
                 'rating_distribution': rating_data['rating_distribution'],
                 'reviews': rating_data['reviews'],
                 'is_verified': False,  # Default false
-                'images': portfolio_images,
-                'main_category': main_category_data,
-                'current_subcategory': {
-                    'code': current_subcategory.subcategory_code,
-                    'name': current_subcategory.display_name
-                } if current_subcategory else None,
-                'all_subcategories': all_subcategories,
+                'portfolio_images': portfolio_images,
                 'service_data': service_specific_data,
                 'location': {
                     'latitude': latitude,
@@ -501,6 +451,20 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 'can_access_app': profile.can_access_app,
                 'created_at': profile.created_at.isoformat() if profile.created_at else None
             }
+
+            # Add type-specific fields (matches profile setup API behavior)
+            if provider_type == 'business':
+                # Business providers: show business fields only
+                provider_data['business_name'] = profile.business_name
+                provider_data['business_location'] = profile.business_location
+                provider_data['established_date'] = profile.established_date.isoformat() if profile.established_date else None
+                provider_data['website'] = profile.website
+            else:
+                # Individual providers: show personal fields only
+                provider_data['full_name'] = getattr(profile, 'full_name', 'Unknown')
+                provider_data['age'] = profile.age
+                provider_data['gender'] = profile.gender
+                provider_data['date_of_birth'] = profile.date_of_birth.isoformat() if profile.date_of_birth else None
 
             return provider_data
 
@@ -536,35 +500,41 @@ class LocationConsumer(AsyncWebsocketConsumer):
             ]
         }
 
-    def get_provider_service_data(self, profile):
+    def get_provider_service_data(self, profile, main_category=None, current_subcategory=None):
         """Get service-specific data based on provider type"""
         if profile.user_type != 'provider' or not profile.service_type:
             return None
 
         try:
             if profile.service_type == 'skill':
-                return self.get_skill_service_data(profile)
+                return self.get_skill_service_data(profile, main_category, current_subcategory)
             elif profile.service_type == 'vehicle':
-                return self.get_vehicle_service_data(profile)
+                return self.get_vehicle_service_data(profile, main_category, current_subcategory)
             elif profile.service_type == 'properties':
-                return self.get_property_service_data(profile)
+                return self.get_property_service_data(profile, main_category, current_subcategory)
             elif profile.service_type == 'SOS':
-                return self.get_sos_service_data(profile)
+                return self.get_sos_service_data(profile, main_category, current_subcategory)
         except Exception as e:
             logger.error(f"Error getting service data for provider {profile.user.id}: {str(e)}")
             return None
 
         return None
 
-    def get_skill_service_data(self, profile):
-        """Get skill-specific service data"""
+    def get_skill_service_data(self, profile, main_category=None, current_subcategory=None):
+        """Get skill-specific service data with category information"""
         if hasattr(profile, 'work_selection') and profile.work_selection:
             work_selection = profile.work_selection
+
+            # Use main_category from work_selection if not provided
+            if not main_category and work_selection.main_category:
+                main_category = work_selection.main_category
+
+            # Get all subcategories
             subcategories = work_selection.selected_subcategories.all()
 
             return {
-                'main_category_id': work_selection.main_category.category_code if work_selection.main_category else None,
-                'main_category_name': work_selection.main_category.display_name if work_selection.main_category else None,
+                'main_category_id': main_category.category_code if main_category else None,
+                'main_category_name': main_category.display_name if main_category else None,
                 'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories],
                 'sub_category_names': [sub.sub_category.display_name for sub in subcategories],
                 'years_experience': work_selection.years_experience,
@@ -573,20 +543,28 @@ class LocationConsumer(AsyncWebsocketConsumer):
             }
         return None
 
-    def get_vehicle_service_data(self, profile):
-        """Get vehicle-specific service data"""
+    def get_vehicle_service_data(self, profile, main_category=None, current_subcategory=None):
+        """Get vehicle-specific service data with category information"""
         data = {}
 
         # Get category data from work selection
         if hasattr(profile, 'work_selection') and profile.work_selection:
             work_selection = profile.work_selection
+
+            # Use main_category from work_selection if not provided
+            if not main_category and work_selection.main_category:
+                main_category = work_selection.main_category
+
+            # Get all subcategories
             subcategories = work_selection.selected_subcategories.all()
+
             data.update({
-                'main_category_id': work_selection.main_category.category_code if work_selection.main_category else None,
+                'main_category_id': main_category.category_code if main_category else None,
+                'main_category_name': main_category.display_name if main_category else None,
                 'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories],
+                'sub_category_names': [sub.sub_category.display_name for sub in subcategories],
                 'years_experience': work_selection.years_experience,
-                'skills': [sub.sub_category.display_name for sub in subcategories] if subcategories else None,
-                'description': work_selection.skills
+                'skills': [sub.sub_category.display_name for sub in subcategories] if subcategories else None
             })
 
         # Get vehicle-specific data
@@ -595,64 +573,76 @@ class LocationConsumer(AsyncWebsocketConsumer):
             data.update({
                 'license_number': vehicle_data.license_number,
                 'vehicle_registration_number': vehicle_data.vehicle_registration_number,
-                'driving_experience_description': vehicle_data.driving_experience_description
+                'description': vehicle_data.driving_experience_description,  # Use 'description' for consistency
+                'service_offering_types': vehicle_data.service_offering_types.split(',') if vehicle_data.service_offering_types else []
             })
 
         return data if data else None
 
-    def get_property_service_data(self, profile):
-        """Get property-specific service data"""
+    def get_property_service_data(self, profile, main_category=None, current_subcategory=None):
+        """Get property-specific service data with category information"""
         data = {}
 
         # Get category data from work selection
         if hasattr(profile, 'work_selection') and profile.work_selection:
             work_selection = profile.work_selection
+
+            # Use main_category from work_selection if not provided
+            if not main_category and work_selection.main_category:
+                main_category = work_selection.main_category
+
+            # Get all subcategories
             subcategories = work_selection.selected_subcategories.all()
+
             data.update({
-                'main_category_id': work_selection.main_category.category_code if work_selection.main_category else None,
+                'main_category_id': main_category.category_code if main_category else None,
+                'main_category_name': main_category.display_name if main_category else None,
                 'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories],
-                'years_experience': work_selection.years_experience,
-                'skills': [sub.sub_category.display_name for sub in subcategories] if subcategories else None,
-                'description': work_selection.skills
+                'sub_category_names': [sub.sub_category.display_name for sub in subcategories]
             })
 
         # Get property-specific data
         if hasattr(profile, 'property_service') and profile.property_service:
             property_data = profile.property_service
             data.update({
-                'property_types': property_data.property_types.split(',') if property_data.property_types else [],
                 'property_title': property_data.property_title,
                 'parking_availability': property_data.parking_availability,
                 'furnishing_type': property_data.furnishing_type,
-                'property_description': property_data.property_description
+                'description': property_data.property_description,  # Use 'description' for consistency
+                'service_offering_types': property_data.service_offering_types.split(',') if property_data.service_offering_types else []
             })
 
         return data if data else None
 
-    def get_sos_service_data(self, profile):
-        """Get SOS/Emergency-specific service data"""
+    def get_sos_service_data(self, profile, main_category=None, current_subcategory=None):
+        """Get SOS/Emergency-specific service data with category information"""
         data = {}
 
         # Get category data from work selection
         if hasattr(profile, 'work_selection') and profile.work_selection:
             work_selection = profile.work_selection
+
+            # Use main_category from work_selection if not provided
+            if not main_category and work_selection.main_category:
+                main_category = work_selection.main_category
+
+            # Get all subcategories
             subcategories = work_selection.selected_subcategories.all()
+
             data.update({
-                'main_category_id': work_selection.main_category.category_code if work_selection.main_category else None,
+                'main_category_id': main_category.category_code if main_category else None,
+                'main_category_name': main_category.display_name if main_category else None,
                 'sub_category_ids': [sub.sub_category.subcategory_code for sub in subcategories],
-                'years_experience': work_selection.years_experience,
-                'skills': [sub.sub_category.display_name for sub in subcategories] if subcategories else None,
-                'description': work_selection.skills
+                'sub_category_names': [sub.sub_category.display_name for sub in subcategories]
             })
 
         # Get SOS-specific data
         if hasattr(profile, 'sos_service') and profile.sos_service:
             sos_data = profile.sos_service
             data.update({
-                'emergency_service_types': sos_data.emergency_service_types.split(',') if sos_data.emergency_service_types else [],
                 'contact_number': sos_data.contact_number,
-                'current_location': sos_data.current_location,
-                'emergency_description': sos_data.emergency_description
+                'location': sos_data.current_location,  # Use 'location' for consistency
+                'description': sos_data.emergency_description  # Use 'description' for consistency
             })
 
         return data if data else None
@@ -897,10 +887,6 @@ class LocationConsumer(AsyncWebsocketConsumer):
 
                     if provider_data:
                         provider_data['distance_km'] = round(distance, 2)
-                        provider_data['subcategory'] = {
-                            'code': subcategory.subcategory_code,
-                            'name': subcategory.display_name
-                        }
                         nearby_providers.append(provider_data)
 
             return sorted(nearby_providers, key=lambda x: x['distance_km'])

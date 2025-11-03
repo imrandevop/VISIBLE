@@ -319,7 +319,7 @@ def send_websocket_notification(provider, work_order, seeker_profile):
 
 
 def build_complete_seeker_data(seeker_profile):
-    """Build complete seeker profile data"""
+    """Build complete seeker profile data matching profile setup API response structure"""
     try:
         from django.conf import settings
 
@@ -337,25 +337,20 @@ def build_complete_seeker_data(seeker_profile):
         if seeker_profile.profile_photo:
             profile_photo = f"{base_url}{seeker_profile.profile_photo.url}"
 
-        # Get languages as array
-        languages = []
-        if seeker_profile.languages:
-            languages = [lang.strip() for lang in seeker_profile.languages.split(',') if lang.strip()]
-
         # Determine seeker type
         is_business = bool(seeker_profile.business_name)
 
-        # Build seeker data
+        # Build seeker data (common fields) matching profile setup API response
         seeker_data = {
-            'user_id': seeker_profile.user.id,
+            'id': seeker_profile.id,
             'mobile_number': seeker_profile.user.mobile_number if seeker_profile.user else '',
             'user_type': seeker_profile.user_type,
             'seeker_type': 'business' if is_business else 'individual',
             'profile_photo': profile_photo,
-            'languages': languages,
             'profile_complete': seeker_profile.profile_complete,
             'can_access_app': seeker_profile.can_access_app,
-            'created_at': seeker_profile.created_at.isoformat() if seeker_profile.created_at else None
+            'created_at': seeker_profile.created_at.isoformat() if seeker_profile.created_at else None,
+            'updated_at': seeker_profile.updated_at.isoformat() if seeker_profile.updated_at else None
         }
 
         # Add individual-specific fields
@@ -379,17 +374,16 @@ def build_complete_seeker_data(seeker_profile):
     except Exception as e:
         logger.error(f"Error building seeker data: {str(e)}")
         return {
-            'user_id': seeker_profile.user.id if seeker_profile.user else None,
-            'name': getattr(seeker_profile, 'full_name', 'Unknown'),
+            'id': seeker_profile.id if seeker_profile else None,
+            'full_name': getattr(seeker_profile, 'full_name', 'Unknown'),
             'mobile_number': seeker_profile.user.mobile_number if seeker_profile.user else '',
             'profile_photo': None,
-            'languages': [],
             'user_type': getattr(seeker_profile, 'user_type', 'seeker')
         }
 
 
 def build_complete_provider_data(provider_profile):
-    """Build complete provider profile data"""
+    """Build complete provider profile data matching profile setup API response structure"""
     try:
         from django.conf import settings
         from apps.profiles.work_assignment_models import WorkOrder
@@ -416,9 +410,9 @@ def build_complete_provider_data(provider_profile):
         if provider_profile.languages:
             languages = [lang.strip() for lang in provider_profile.languages.split(',') if lang.strip()]
 
-        # Build base provider data
+        # Build base provider data matching profile setup API response
         provider_data = {
-            'user_id': provider_profile.user.id,
+            'id': provider_profile.id,
             'mobile_number': provider_profile.user.mobile_number if provider_profile.user else '',
             'user_type': provider_profile.user_type,
             'provider_type': 'business' if is_business else 'individual',
@@ -429,7 +423,6 @@ def build_complete_provider_data(provider_profile):
             'service_coverage_area': provider_profile.service_coverage_area,
             'profile_complete': provider_profile.profile_complete,
             'can_access_app': provider_profile.can_access_app,
-            'is_active_for_work': provider_profile.is_active_for_work,
             'created_at': provider_profile.created_at.isoformat() if provider_profile.created_at else None,
             'updated_at': provider_profile.updated_at.isoformat() if provider_profile.updated_at else None
         }
@@ -465,7 +458,7 @@ def build_complete_provider_data(provider_profile):
                     "main_category_id": work_selection.main_category.category_code if work_selection.main_category else None,
                     "main_category_name": work_selection.main_category.display_name if work_selection.main_category else None,
                     "sub_category_ids": [sub.sub_category.subcategory_code for sub in subcategories],
-                    "sub_category_names": [sub.sub_category.display_name for sub in subcategories],
+                    "sub_category_names": [sub.sub_category.display_name for sub in subcategories]
                 }
 
                 # Add service-specific data
@@ -476,7 +469,7 @@ def build_complete_provider_data(provider_profile):
                     })
                 elif provider_profile.service_type == 'vehicle':
                     service_data.update({
-                        "years_experience": work_selection.years_experience,
+                        "years_experience": work_selection.years_experience
                     })
                     if hasattr(provider_profile, 'vehicle_service') and provider_profile.vehicle_service:
                         vehicle_data = provider_profile.vehicle_service
@@ -576,7 +569,7 @@ def build_complete_provider_data(provider_profile):
     except Exception as e:
         logger.error(f"Error building provider data: {str(e)}")
         return {
-            'user_id': provider_profile.user.id if provider_profile.user else None,
+            'id': provider_profile.id if provider_profile else None,
             'provider_id': provider_profile.provider_id if hasattr(provider_profile, 'provider_id') else None,
             'mobile_number': provider_profile.user.mobile_number if provider_profile.user else '',
             'user_type': 'provider'
