@@ -141,15 +141,19 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 }))
 
         except json.JSONDecodeError as e:
-            user_id = getattr(self, 'user', {}).get('id', 'unknown') if hasattr(self, 'user') else 'unknown'
+            user_id = self.user.id if hasattr(self, 'user') and self.user else 'unknown'
             logger.error(f"JSON decode error for user {user_id}: {str(e)}, data: {text_data}")
+            print(f"[WEBSOCKET ERROR] JSON decode error: {str(e)}")
             await self.send(text_data=json.dumps({
                 'type': 'error',
                 'error': 'Invalid JSON format'
             }))
         except Exception as e:
-            user_id = getattr(self, 'user', {}).get('id', 'unknown') if hasattr(self, 'user') else 'unknown'
+            user_id = self.user.id if hasattr(self, 'user') and self.user else 'unknown'
             logger.error(f"WebSocket error for user {user_id}: {str(e)}, data: {text_data}", exc_info=True)
+            print(f"[WEBSOCKET ERROR] Exception in receive: {str(e)}")
+            import traceback
+            print(f"[WEBSOCKET ERROR] Traceback: {traceback.format_exc()}")
             await self.send(text_data=json.dumps({
                 'type': 'error',
                 'error': f'An unexpected error occurred: {str(e)}'
