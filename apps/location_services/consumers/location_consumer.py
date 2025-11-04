@@ -162,37 +162,51 @@ class LocationConsumer(AsyncWebsocketConsumer):
     async def handle_provider_status_update(self, data):
         """Handle provider going active/inactive"""
         if self.user_type != 'provider':
+            print(f"[WEBSOCKET] Ignoring provider status update for non-provider user type: {self.user_type}")
             return
 
         active = data.get('active', False)
         category_code = data.get('category_code', '')
         subcategory_code = data.get('subcategory_code', '')
 
+        print(f"[WEBSOCKET] Provider status update - User: {self.user.id}, Active: {active}, Category: {category_code}, Subcategory: {subcategory_code}")
+
         if active:
             # Notify seekers in the same category who are currently searching
+            print(f"[WEBSOCKET] Provider {self.user.id} going active, notifying nearby seekers")
             await self.notify_nearby_seekers_about_new_provider(category_code, subcategory_code)
         else:
             # Notify seekers that this provider went offline
+            print(f"[WEBSOCKET] Provider {self.user.id} going offline, notifying seekers")
             await self.notify_seekers_about_provider_offline(category_code, subcategory_code)
 
     async def handle_seeker_search_update(self, data):
         """Handle seeker starting/stopping search"""
         if self.user_type != 'seeker':
+            print(f"[WEBSOCKET] Ignoring seeker search update for non-seeker user type: {self.user_type}")
             return
 
         searching = data.get('searching', False)
         category_code = data.get('category_code', '')
         subcategory_code = data.get('subcategory_code', '')
+        latitude = data.get('latitude')
+        longitude = data.get('longitude')
+        distance_radius = data.get('distance_radius', 5)
+
+        print(f"[WEBSOCKET] Seeker search update - User: {self.user.id}, Searching: {searching}, Category: {category_code}, Subcategory: {subcategory_code}, Lat: {latitude}, Lng: {longitude}, Radius: {distance_radius}")
 
         if searching:
             # Send current nearby providers
+            print(f"[WEBSOCKET] Searching for nearby providers for seeker {self.user.id}")
             nearby_providers = await self.get_nearby_providers_enhanced(
-                data.get('latitude'),
-                data.get('longitude'),
-                data.get('distance_radius', 5),
+                latitude,
+                longitude,
+                distance_radius,
                 category_code,
                 subcategory_code
             )
+
+            print(f"[WEBSOCKET] Found {len(nearby_providers)} nearby providers")
 
             await self.send(text_data=json.dumps({
                 'type': 'nearby_providers',
@@ -286,21 +300,38 @@ class LocationConsumer(AsyncWebsocketConsumer):
         provider_status = await self.get_provider_status_enhanced(self.user.id)
 
         if not provider_status:
+            print(f"[WEBSOCKET] No provider status found for user {self.user.id}")
             return
+
+        print(f"[WEBSOCKET] Provider status retrieved: {provider_status.get('provider_id', 'unknown')}")
 
         # Get all seekers currently searching in this category
         searching_seekers = await self.get_searching_seekers_by_provider(self.user.id, category_code)
+        print(f"[WEBSOCKET] Found {len(searching_seekers)} searching seekers")
 
         for seeker in searching_seekers:
+            # Extract latitude/longitude from nested location object
+            provider_location = provider_status.get('location', {})
+            provider_lat = provider_location.get('latitude')
+            provider_lng = provider_location.get('longitude')
+
+            if provider_lat is None or provider_lng is None:
+                print(f"[WEBSOCKET] Provider location missing, skipping seeker {seeker['user_id']}")
+                continue
+
             distance = calculate_distance(
                 seeker['latitude'], seeker['longitude'],
-                provider_status['latitude'], provider_status['longitude']
+                provider_lat, provider_lng
             )
+
+            print(f"[WEBSOCKET] Distance to seeker {seeker['user_id']}: {distance:.2f} km (radius: {seeker['distance_radius']} km)")
 
             if distance <= seeker['distance_radius']:
                 # Add distance to provider data
                 provider_data = provider_status.copy()
                 provider_data['distance_km'] = round(distance, 2)
+
+                print(f"[WEBSOCKET] Notifying seeker {seeker['user_id']} about new provider")
 
                 # Notify this seeker about the new provider with complete data
                 await self.channel_layer.group_send(
