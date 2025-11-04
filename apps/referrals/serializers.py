@@ -57,6 +57,16 @@ class ApplyReferralCodeSerializer(serializers.Serializer):
         if ProviderReferral.objects.filter(referred_provider=current_profile).exists():
             raise serializers.ValidationError("You have already used a referral code. Each provider can only use one referral code.")
 
+        # Check for mutual/circular referrals (prevent A referring B if B already referred A)
+        referrer = self.context.get('referrer')
+        if ProviderReferral.objects.filter(
+            referred_provider=referrer,
+            referrer_provider=current_profile
+        ).exists():
+            raise serializers.ValidationError(
+                "Mutual referrals are not allowed. This provider was previously referred by you."
+            )
+
         # Store current profile in context
         self.context['current_profile'] = current_profile
 

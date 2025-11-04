@@ -61,6 +61,12 @@ class ProviderReferral(BaseModel):
             models.Index(fields=['referrer_provider', '-created_at']),
             models.Index(fields=['referred_provider']),
         ]
+        constraints = [
+            models.CheckConstraint(
+                check=~models.Q(referred_provider=models.F('referrer_provider')),
+                name='no_self_referral'
+            ),
+        ]
 
     def __str__(self):
         return f"{self.referred_provider.full_name} referred by {self.referrer_provider.full_name}"
