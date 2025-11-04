@@ -198,11 +198,19 @@ def seeker_search_toggle(request, version=None):
     }
 
     Response includes nearby providers with:
-    - provider_id, name, rating (default 0)
-    - description (from UserProfile.bio)
-    - is_verified (default false)
-    - images (portfolio images array)
-    - distance and location data
+    - provider_id, provider_type (individual/business), service_type
+    - Individual fields: full_name, gender, date_of_birth, age (for individual providers only)
+    - Business fields: business_name, business_location, established_date, website (for business providers only)
+    - service_coverage_area (in kilometers - the maximum distance a provider can provide service)
+    - rating (mock data), total_reviews, rating_distribution, reviews
+    - service_data (category and service-specific information)
+    - portfolio_images array
+    - distance_km and location data
+
+    Note: Providers are filtered by:
+    1. Provider must be within seeker's search radius (distance_radius)
+    2. Seeker must be within provider's service coverage area (service_coverage_area)
+    3. Both conditions must be met for provider to appear in results
     """
     try:
         # Get and validate numeric fields

@@ -24,18 +24,22 @@ Production:
 class LocationConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         try:
+            print(f"[WEBSOCKET CONNECT] Connection attempt started")
             self.user_type = self.scope['url_route']['kwargs']['user_type']
             self.user = self.scope["user"]
 
+            print(f"[WEBSOCKET CONNECT] User: {self.user}, Type: {self.user_type}, Is Anonymous: {isinstance(self.user, AnonymousUser)}")
             logger.info(f"WebSocket connection attempt - User: {self.user}, Type: {self.user_type}, Is Anonymous: {isinstance(self.user, AnonymousUser)}")
 
             if isinstance(self.user, AnonymousUser):
+                print(f"[WEBSOCKET CONNECT] REJECTED - Anonymous user")
                 logger.warning(f"WebSocket connection rejected - Anonymous user")
                 await self.close(code=4001)
                 return
 
             # Create user-specific group
             self.user_group_name = f'user_{self.user.id}_{self.user_type}'
+            print(f"[WEBSOCKET CONNECT] User group name: {self.user_group_name}")
 
             # Join user group
             await self.channel_layer.group_add(
@@ -43,9 +47,10 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 self.channel_name
             )
 
-
+            print(f"[WEBSOCKET CONNECT] Successfully joined group, accepting connection")
             logger.info(f"WebSocket connected successfully for user {self.user.id} ({self.user_type})")
             await self.accept()
+            print(f"[WEBSOCKET CONNECT] Connection accepted for user {self.user.id}")
 
         except Exception as e:
             logger.error(f"WebSocket connection error: {str(e)}")
@@ -72,9 +77,12 @@ class LocationConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         try:
+            print(f"[WEBSOCKET RECEIVE] Raw data received: {text_data}")
+
             # Check if user and user_type are properly initialized
             if not hasattr(self, 'user') or not hasattr(self, 'user_type'):
                 logger.error(f"WebSocket consumer not properly initialized")
+                print(f"[WEBSOCKET ERROR] Consumer not properly initialized")
                 await self.send(text_data=json.dumps({
                     'type': 'error',
                     'error': 'WebSocket connection not properly initialized'
@@ -83,12 +91,14 @@ class LocationConsumer(AsyncWebsocketConsumer):
 
             if isinstance(self.user, AnonymousUser):
                 logger.error(f"Anonymous user trying to send message")
+                print(f"[WEBSOCKET ERROR] Anonymous user trying to send message")
                 await self.send(text_data=json.dumps({
                     'type': 'error',
                     'error': 'Authentication required'
                 }))
                 return
 
+            print(f"[WEBSOCKET RECEIVE] User ID: {self.user.id}, User type: {self.user_type}")
             logger.info(f"WebSocket received message for user {self.user.id}: {text_data}")
 
             # Handle empty or whitespace-only messages
@@ -109,10 +119,14 @@ class LocationConsumer(AsyncWebsocketConsumer):
                 await self.handle_distance_radius_update(text_data_json)
             elif message_type == 'ping':
                 # Health check ping
-                await self.send(text_data=json.dumps({
+                print(f"[WEBSOCKET PING] Received ping from user {self.user.id}")
+                response = {
                     'type': 'pong',
                     'message': 'WebSocket connection is active'
-                }))
+                }
+                print(f"[WEBSOCKET PONG] Sending response: {response}")
+                await self.send(text_data=json.dumps(response))
+                print(f"[WEBSOCKET PONG] Response sent successfully")
             elif not message_type:
                 logger.warning(f"Message without type received from user {self.user.id}")
                 await self.send(text_data=json.dumps({
