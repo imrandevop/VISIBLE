@@ -60,6 +60,9 @@ class RoleSwitchSerializer(serializers.Serializer):
         # Store previous role
         previous_user_type = user_profile.user_type
 
+        # Determine if this is a business or individual profile based on business_name
+        is_business_profile = bool(user_profile.business_name)
+
         # Update user profile
         user_profile.previous_user_type = previous_user_type
         user_profile.user_type = new_user_type
@@ -73,7 +76,19 @@ class RoleSwitchSerializer(serializers.Serializer):
             # Create wallet if it doesn't exist
             if not hasattr(user_profile, 'wallet'):
                 Wallet.objects.create(user_profile=user_profile)
+
+            # Clear seeker_type when switching to provider (providers don't have seeker_type)
+            user_profile.seeker_type = None
+
         elif new_user_type == 'seeker':
+            # Preserve business/individual designation when switching to seeker
+            # If profile has business fields filled (business_name), set seeker_type to 'business'
+            # Otherwise set to 'individual'
+            if is_business_profile:
+                user_profile.seeker_type = 'business'
+            else:
+                user_profile.seeker_type = 'individual'
+
             # Create wallet for seeker if it doesn't exist
             if not hasattr(user_profile, 'wallet'):
                 Wallet.objects.create(user_profile=user_profile)
