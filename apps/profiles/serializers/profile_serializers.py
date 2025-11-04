@@ -1290,23 +1290,33 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
     # Add languages as method field
     languages = serializers.SerializerMethodField()
 
+    # Add provider_type and seeker_type as method fields (computed based on business_name)
+    provider_type = serializers.SerializerMethodField()
+    seeker_type = serializers.CharField(read_only=True)
+
     class Meta:
         model = UserProfile
         fields = [
             'id', 'full_name', 'user_type', 'service_type', 'gender', 'date_of_birth', 'age',
             'profile_photo', 'profile_complete', 'can_access_app',
             'mobile_number', 'languages', 'provider_id', 'service_coverage_area',
-            'seeker_type', 'business_name', 'business_location', 'established_date', 'website',
+            'provider_type', 'seeker_type', 'business_name', 'business_location', 'established_date', 'website',
             'portfolio_images', 'service_data',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'age', 'mobile_number', 'provider_id', 'created_at', 'updated_at']
 
+    def get_provider_type(self, obj):
+        """Get provider type based on business_name (business if exists, individual otherwise)"""
+        if obj.user_type == 'provider':
+            return 'business' if obj.business_name else 'individual'
+        return None
+
     def to_representation(self, instance):
         """
         Override to exclude irrelevant fields based on user_type and provider/seeker type.
-        - For seekers: exclude provider-specific fields and languages
-        - For providers: exclude seeker-specific fields
+        - For seekers: exclude provider-specific fields and languages, include seeker_type
+        - For providers: exclude seeker-specific fields, include provider_type
         - For individual types: exclude business fields
         - For business types: exclude personal fields
         """
@@ -1317,7 +1327,7 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
             # Remove provider-specific fields and languages (seekers don't have languages)
             provider_fields = [
                 'service_type', 'provider_id', 'service_coverage_area',
-                'portfolio_images', 'service_data', 'languages'
+                'portfolio_images', 'service_data', 'languages', 'provider_type'
             ]
             for field in provider_fields:
                 data.pop(field, None)
@@ -1339,15 +1349,15 @@ class ProfileResponseSerializer(serializers.ModelSerializer):
             data.pop('seeker_type', None)
 
             # Determine provider type based on business_name (business if exists, individual if not)
-            is_business_provider = bool(instance.business_name)
+            provider_type = data.get('provider_type')
 
             # Handle provider type specific fields
-            if not is_business_provider:
+            if provider_type == 'individual':
                 # Remove business fields for individual providers
                 business_fields = ['business_name', 'business_location', 'established_date', 'website']
                 for field in business_fields:
                     data.pop(field, None)
-            else:
+            elif provider_type == 'business':
                 # Remove personal fields for business providers (but keep profile_photo)
                 personal_fields = ['full_name', 'date_of_birth', 'gender', 'age']
                 for field in personal_fields:
