@@ -220,7 +220,10 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                     'timestamp': timezone.now().isoformat()
                 }))
 
-                # Notify seeker of acceptance
+                # Send FCM notification to seeker
+                await self.send_fcm_to_seeker(work_id, accepted=True)
+
+                # Notify seeker of acceptance via WebSocket
                 await self.notify_seeker_of_acceptance(work_id, session_data)
 
             else:
@@ -235,7 +238,10 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
                         'timestamp': timezone.now().isoformat()
                     }))
 
-                    # Notify seeker of rejection
+                    # Send FCM notification to seeker
+                    await self.send_fcm_to_seeker(work_id, accepted=False)
+
+                    # Notify seeker of rejection via WebSocket
                     await self.notify_seeker_of_response(work_id, accepted)
                 else:
                     await self.send(text_data=json.dumps({
@@ -879,6 +885,49 @@ class ProviderWorkConsumer(AsyncWebsocketConsumer):
             return False
         except Exception as e:
             logger.error(f"❌ Error updating work order #{work_id}: {e}")
+            return False
+
+    @database_sync_to_async
+    def send_fcm_to_seeker(self, work_id, accepted):
+        """
+        Send FCM push notification to seeker when provider responds to work
+
+        Args:
+            work_id: ID of the work order
+            accepted: bool - whether provider accepted or rejected
+        """
+        from apps.profiles.work_assignment_models import WorkOrder
+        from apps.profiles.notification_services import send_work_response_notification
+
+        try:
+            work_order = WorkOrder.objects.select_related(
+                'seeker__profile',
+                'provider__profile'
+            ).get(id=work_id)
+
+            seeker_profile = work_order.seeker.profile
+
+            # Send FCM notification
+            success, message_id, error = send_work_response_notification(
+                seeker_profile,
+                work_order,
+                accepted
+            )
+
+            if success:
+                logger.info(f"✅ FCM notification sent to seeker for work #{work_id} - {'accepted' if accepted else 'rejected'}")
+            else:
+                logger.warning(f"⚠️ Failed to send FCM to seeker for work #{work_id}: {error}")
+
+            return success
+
+        except WorkOrder.DoesNotExist:
+            logger.error(f"❌ Work order #{work_id} not found when sending FCM")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Error sending FCM notification for work #{work_id}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
 
     @database_sync_to_async
