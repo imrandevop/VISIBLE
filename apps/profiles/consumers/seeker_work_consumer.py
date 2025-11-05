@@ -245,8 +245,11 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
             message_data = await self.save_chat_message(session_id, self.user.id, 'seeker', message_text)
 
             if message_data:
-                # Send to provider
+                # Send to provider via WebSocket
                 await self.send_chat_message_to_provider(session_id, message_data)
+
+                # Send FCM notification to provider
+                await self.send_chat_fcm_to_provider(session_id, message_text, message_data['message_id'])
 
                 # Send confirmation to seeker
                 await self.send(text_data=json.dumps({
@@ -776,6 +779,53 @@ class SeekerWorkConsumer(AsyncWebsocketConsumer):
             return False
         except Exception as e:
             logger.error(f"Error updating message status: {e}")
+            return False
+
+    @database_sync_to_async
+    def send_chat_fcm_to_provider(self, session_id, message_text, message_id):
+        """
+        Send FCM push notification to provider for chat message
+
+        Args:
+            session_id: UUID of the work session
+            message_text: str - The chat message content
+            message_id: UUID - The message ID
+        """
+        from apps.profiles.work_assignment_models import WorkSession
+        from apps.profiles.notification_services import send_chat_message_notification
+
+        try:
+            session = WorkSession.objects.select_related(
+                'work_order__seeker__profile',
+                'work_order__provider__profile'
+            ).get(session_id=session_id)
+
+            provider_profile = session.work_order.provider.profile
+            seeker_profile = session.work_order.seeker.profile
+
+            # Send FCM notification
+            success, fcm_message_id, error = send_chat_message_notification(
+                recipient_profile=provider_profile,
+                sender_profile=seeker_profile,
+                session=session,
+                message_text=message_text,
+                message_id=message_id
+            )
+
+            if success:
+                logger.info(f"✅ Chat FCM notification sent to provider for session {session_id}")
+            else:
+                logger.warning(f"⚠️ Failed to send chat FCM to provider for session {session_id}: {error}")
+
+            return success
+
+        except WorkSession.DoesNotExist:
+            logger.error(f"❌ Work session {session_id} not found when sending chat FCM")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Error sending chat FCM notification for session {session_id}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
 
     @database_sync_to_async

@@ -232,6 +232,113 @@ def send_work_response_notification(seeker_profile, work_order, accepted):
         return False, None, error_msg
 
 
+def send_chat_message_notification(recipient_profile, sender_profile, session, message_text, message_id):
+    """
+    Send FCM notification for chat messages between seeker and provider
+
+    Args:
+        recipient_profile: UserProfile object of the message recipient
+        sender_profile: UserProfile object of the message sender
+        session: WorkSession object
+        message_text: str - The chat message content
+        message_id: UUID - The message ID
+
+    Returns:
+        tuple: (success: bool, message_id: str or None, error: str or None)
+    """
+    # Ensure Firebase is initialized before sending
+    _ensure_firebase_initialized()
+
+    if not recipient_profile.fcm_token:
+        logger.warning(f"⚠️ No FCM token for user: {recipient_profile.user.mobile_number}")
+        return False, None, "No FCM token available"
+
+    try:
+        sender_name = sender_profile.full_name
+        sender_type = sender_profile.user_type  # 'seeker' or 'provider'
+
+        # Create FCM message (data-only for Android, client handles display)
+        message = messaging.Message(
+            data={
+                'type': 'chat_message',
+                'session_id': str(session.session_id),
+                'message_id': str(message_id),
+                'sender_name': sender_name,
+                'sender_type': sender_type,
+                'message': message_text,
+                'timestamp': timezone.now().isoformat(),
+            },
+            android=messaging.AndroidConfig(
+                priority='high',
+            ),
+            apns=messaging.APNSConfig(
+                payload=messaging.APNSPayload(
+                    aps=messaging.Aps(
+                        alert=messaging.ApsAlert(
+                            title=sender_name,
+                            body=message_text,
+                        ),
+                        sound='default',
+                        badge=1,
+                    ),
+                ),
+            ),
+            token=recipient_profile.fcm_token,
+        )
+
+        # Send notification
+        response = messaging.send(message)
+        logger.info(f"✅ Chat message FCM notification sent: {response}")
+
+        # Log notification in database
+        from .work_assignment_models import WorkAssignmentNotification, WorkOrder
+        # Get the work_order associated with this session
+        work_order = session.work_order
+
+        WorkAssignmentNotification.objects.create(
+            work_order=work_order,
+            recipient=recipient_profile.user,
+            notification_type='chat_message',
+            delivery_method='fcm',
+            delivery_status='sent',
+            fcm_message_id=response,
+            sent_at=timezone.now()
+        )
+
+        return True, response, None
+
+    except Exception as e:
+        # Check if it's an invalid token error
+        if "Invalid registration token" in str(e) or "InvalidArgument" in str(e):
+            error_msg = f"Invalid FCM token: {e}"
+            logger.error(f"❌ {error_msg}")
+
+            # Mark FCM token as invalid
+            recipient_profile.fcm_token = None
+            recipient_profile.save(update_fields=['fcm_token'])
+
+            return False, None, error_msg
+        else:
+            error_msg = f"Error sending chat message FCM notification: {e}"
+            logger.error(f"❌ {error_msg}")
+
+            # Log failed notification
+            from .work_assignment_models import WorkAssignmentNotification, WorkOrder
+            work_order = session.work_order
+
+            WorkAssignmentNotification.objects.create(
+                work_order=work_order,
+                recipient=recipient_profile.user,
+                notification_type='chat_message',
+                delivery_method='fcm',
+                delivery_status='failed',
+                error_message=error_msg,
+                sent_at=timezone.now()
+            )
+
+            return False, None, error_msg
+
+
 def validate_fcm_token(fcm_token):
     """
     Validate FCM token by sending a test message
